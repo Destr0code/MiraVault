@@ -23,6 +23,8 @@ MiraVault es una app de escritorio para organizar, explorar y reproducir una bib
 
 Esta release es **`0.4.1-beta`**.
 
+Consulta [CHANGELOG.md](CHANGELOG.md) para ver los cambios por version.
+
 Significa:
 
 - La base de la app ya existe y se puede clonar, instalar y ejecutar.
