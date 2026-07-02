@@ -27,6 +27,10 @@ function PauseIcon() {
   )
 }
 
+function isExternalOnlyStream(url) {
+  return /^(rtp|udp|rtsp):\/\//i.test(String(url || '').trim())
+}
+
 export default function IPTVPlayer() {
   const videoRef = useRef(null)
   const hlsRef = useRef(null)
@@ -43,6 +47,7 @@ export default function IPTVPlayer() {
   const [playing, setPlaying] = useState(false)
   const [volume, setVolume] = useState(1)
   const [error, setError] = useState('')
+  const [debugInfo, setDebugInfo] = useState(null)
   const [status, setStatus] = useState('Conectando...')
   const [controlsVisible, setControlsVisible] = useState(true)
   const [reloadNonce, setReloadNonce] = useState(0)
@@ -75,9 +80,12 @@ export default function IPTVPlayer() {
     activeUrlRef.current = current.url
 
     setError('')
+    setDebugInfo(null)
     setStatus('Conectando...')
     setPlaying(false)
     cleanupPlayback(video)
+    let bridgeStarted = false
+    let bridgeTimeout = null
 
     const canNative = video.canPlayType('application/vnd.apple.mpegurl')
     const isHlsUrl = /\.m3u8(?:[?#].*)?$/i.test(current.url) || /m3u8/i.test(current.url)
@@ -104,7 +112,7 @@ export default function IPTVPlayer() {
       }
     }
 
-    if (isHlsUrl && Hls.isSupported() && !canNative) {
+    function loadHls(url) {
       setStatus('Cargando HLS...')
       const hls = new Hls({
         lowLatencyMode: true,
@@ -116,25 +124,72 @@ export default function IPTVPlayer() {
       hlsRef.current = hls
       hls.attachMedia(video)
       hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        if (!disposed && playbackIdRef.current === playbackId) hls.loadSource(current.url)
+        if (!disposed && playbackIdRef.current === playbackId) hls.loadSource(url)
       })
       hls.on(Hls.Events.MANIFEST_PARSED, startVideo)
       hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data?.fatal) safeSetError(data?.details || 'No se pudo reproducir este stream HLS.')
+        if (!data?.fatal) return
+        const details = data?.details || ''
+        if (details.includes('manifestLoadTimeOut')) {
+          safeSetError('El canal HLS no responde a tiempo. Si es RTP/UDP/RTSP, el bridge no esta sirviendo la playlist local.')
+          return
+        }
+        if (details.includes('fragLoadTimeOut') || details.includes('bufferStalledError')) {
+          safeSetError('El canal se ha quedado sin buffer. Puede que el stream original sea inestable o que el bridge no genere segmentos suficientemente rapido.')
+          return
+        }
+        safeSetError(details || 'No se pudo reproducir este stream HLS.')
       })
-    } else {
+    }
+
+    function loadDirect(url) {
       if (!isHlsUrl) {
         setError('Este canal no parece HLS/M3U8. Chromium puede no reproducir TS directo; si falla, abre VLC.')
       }
       video.addEventListener('loadedmetadata', startVideo, { once: true })
       video.addEventListener('canplay', startVideo, { once: true })
       video.addEventListener('error', () => safeSetError('El reproductor interno no pudo cargar este canal.'), { once: true })
-      video.src = current.url
+      video.src = url
       video.load()
+    }
+
+    if (isExternalOnlyStream(current.url)) {
+      setStatus('Preparando bridge IPTV...')
+      bridgeTimeout = window.setTimeout(() => {
+        safeSetError('No se pudo preparar el canal IPTV en 3 minutos. Prueba abrirlo en VLC o revisa la red multicast.')
+      }, 180000)
+      window.electronAPI?.iptvStartBridge?.(current.url).then((result) => {
+        window.clearTimeout(bridgeTimeout)
+        if (disposed || playbackIdRef.current !== playbackId) {
+          return
+        }
+        setDebugInfo(result || null)
+        if (!result?.ok || !result.hlsUrl) {
+          safeSetError(result?.error || 'No se pudo preparar el bridge IPTV. Prueba abrirlo en VLC.')
+          return
+        }
+        bridgeStarted = true
+        setStatus(`Bridge IPTV listo (${result.engine || 'desconocido'})`)
+        loadHls(result.hlsUrl)
+      }).catch((bridgeError) => {
+        window.clearTimeout(bridgeTimeout)
+        safeSetError(bridgeError?.message || 'No se pudo preparar el bridge IPTV. Prueba abrirlo en VLC.')
+      })
+    } else if (isHlsUrl && Hls.isSupported() && !canNative) {
+      loadHls(current.url)
+    } else {
+      loadDirect(current.url)
     }
 
     return () => {
       disposed = true
+      if (bridgeTimeout) window.clearTimeout(bridgeTimeout)
+      if (bridgeStarted) {
+        const bridgeUrl = current.url
+        window.setTimeout(() => {
+          if (activeUrlRef.current !== bridgeUrl) window.electronAPI?.iptvStopBridge?.()
+        }, 500)
+      }
       if (playbackIdRef.current === playbackId) playbackIdRef.current += 1
       if (activeUrlRef.current === current.url) activeUrlRef.current = ''
       cleanupPlayback(video)
@@ -266,7 +321,12 @@ export default function IPTVPlayer() {
         {error ? (
           <div className="absolute inset-x-6 top-24 z-30 rounded-2xl border border-[#f3cf63]/30 bg-black/75 p-4 text-sm text-[#f3cf63] backdrop-blur">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <span>{error}</span>
+              <span className="min-w-0 whitespace-pre-wrap">
+                {error}
+                {debugInfo?.engine ? <span className="mt-2 block text-xs text-white/50">Bridge: {debugInfo.engine}</span> : null}
+                {debugInfo?.outputDir ? <span className="mt-1 block break-all text-xs text-white/50">Temp: {debugInfo.outputDir}</span> : null}
+                {debugInfo?.logPath ? <span className="mt-1 block break-all text-xs text-white/50">Log: {debugInfo.logPath}</span> : null}
+              </span>
               <button type="button" onClick={openExternal} className="rounded-xl bg-[#f3cf63] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">
                 Abrir en VLC
               </button>

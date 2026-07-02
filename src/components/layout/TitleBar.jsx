@@ -1,12 +1,3 @@
-function ShieldIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M12 3 5 6v5c0 4.5 2.8 7.9 7 10 4.2-2.1 7-5.5 7-10V6l-7-3Z" />
-      <path d="M9.5 12.5 11.2 14l3.5-4" />
-    </svg>
-  )
-}
-
 function MinimizeIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -57,8 +48,8 @@ export default function TitleBar() {
       style={{ WebkitAppRegion: 'drag' }}
     >
       <div className="flex items-center gap-2 text-[color:var(--text-primary)]">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[color:var(--accent-muted)] text-[color:var(--accent)]">
-          <ShieldIcon />
+        <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-md bg-[color:var(--accent-muted)]">
+          <img src="/icon.png" alt="" className="h-5 w-5 object-contain" draggable={false} />
         </div>
         <span className="text-sm font-medium">MiraVault</span>
       </div>

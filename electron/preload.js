@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
   openPath: (p) => ipcRenderer.invoke('shell:openPath', p),
   iptvFetchPlaylist: (url) => ipcRenderer.invoke('iptv:fetchPlaylist', url),
+  iptvStartBridge: (url) => ipcRenderer.invoke('iptv:startBridge', url),
+  iptvStopBridge: () => ipcRenderer.invoke('iptv:stopBridge'),
+  iptvGetBridgeDebug: () => ipcRenderer.invoke('iptv:getBridgeDebug'),
 
   // Config
   getTheme: () => ipcRenderer.invoke('config:getTheme'),
@@ -48,7 +51,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Player
-  playerOpen: (filePath, startTime) => ipcRenderer.invoke('player:open', filePath, startTime),
+  playerOpen: (filePath, startTime, payload) => ipcRenderer.invoke('player:open', filePath, startTime, payload),
+  subtitlesList: (payload) => ipcRenderer.invoke('subtitles:list', payload),
+  subtitlesResolve: (payload) => ipcRenderer.invoke('subtitles:resolve', payload),
   playerOpenTracked: (payload) => ipcRenderer.invoke('player:openTracked', payload),
   playerStopTracked: () => ipcRenderer.invoke('player:stopTracked'),
   playerCommandTracked: (payload) => ipcRenderer.invoke('player:commandTracked', payload),

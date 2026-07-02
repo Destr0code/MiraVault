@@ -6,6 +6,7 @@ const { spawn } = require('child_process')
 const { app } = require('electron')
 const { getStore } = require('./storeHelper')
 const { updateProgress, markWatched } = require('./tracker')
+const { resolveSubtitle } = require('./subtitles')
 
 let session = null
 
@@ -162,6 +163,7 @@ async function openTrackedPlayback(payload = {}, notifyWindow = null) {
   const port = await getFreePort()
   const password = `miravault-${process.pid}-${Date.now()}`
   const startTime = Math.max(0, Math.floor(Number(payload.startTime) || 0))
+  const subtitleResult = await resolveSubtitle(payload).catch((error) => ({ ok: false, error: error.message, subtitle: null }))
   const args = [
     '--extraintf=http',
     '--http-host=127.0.0.1',
@@ -174,6 +176,9 @@ async function openTrackedPlayback(payload = {}, notifyWindow = null) {
   ]
 
   if (startTime > 0) args.push(`--start-time=${startTime}`)
+  if (subtitleResult?.subtitle?.path && fs.existsSync(subtitleResult.subtitle.path)) {
+    args.push(`--sub-file=${subtitleResult.subtitle.path}`)
+  }
   args.push(filePath)
 
   let child
@@ -232,7 +237,13 @@ async function openTrackedPlayback(payload = {}, notifyWindow = null) {
     })
   }
 
-  return { ok: true, mode: 'vlc-external', executable: vlcPath }
+  return {
+    ok: true,
+    mode: 'vlc-external',
+    executable: vlcPath,
+    subtitle: subtitleResult?.subtitle || null,
+    subtitleError: subtitleResult?.ok === false ? subtitleResult.error : ''
+  }
 }
 
 async function commandTrackedPlayback(action, value) {

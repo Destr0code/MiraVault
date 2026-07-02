@@ -102,7 +102,11 @@ export default function Player() {
           title,
           startTime,
           nextEpisode,
-          backTo
+          backTo,
+          type: playback.type,
+          imdbId: playback.imdbId,
+          season: playback.season,
+          episode: playback.episode
         })
       } catch {
         result = { ok: false, fallback: true }
@@ -240,7 +244,13 @@ export default function Player() {
   }
 
   async function handleExternalOpen() {
-    const result = await window.electronAPI?.playerOpen?.(filePath, currentTime || startTime || 0)
+    const result = await window.electronAPI?.playerOpen?.(filePath, currentTime || startTime || 0, {
+      title,
+      type: playback.type,
+      imdbId: playback.imdbId,
+      season: playback.season,
+      episode: playback.episode
+    })
     if (!result?.ok) {
       show(result?.error || 'No se pudo abrir el reproductor externo.', 'error')
     }

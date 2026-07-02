@@ -14,8 +14,9 @@ const WIKIPEDIA_SUMMARY_BASE = 'https://es.wikipedia.org/api/rest_v1/page/summar
 const COMMONS_FILE_BASE = 'https://commons.wikimedia.org/wiki/Special:FilePath'
 const REQUEST_TIMEOUT = 9000
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 45
-const CACHE_VERSION = 'v2'
+const CACHE_VERSION = 'v3'
 const EMPTY_METADATA = {
+  imdbId: '',
   poster: '',
   synopsis: '',
   genres: [],
@@ -60,13 +61,18 @@ function mergeMetadata(...entries) {
   const result = { ...EMPTY_METADATA }
   for (const entry of entries) {
     if (!entry) continue
-    for (const key of ['poster', 'synopsis', 'duration', 'director', 'rating', 'provider']) {
+    for (const key of ['imdbId', 'poster', 'synopsis', 'duration', 'director', 'rating', 'provider']) {
       if (!result[key] && entry[key]) result[key] = entry[key]
     }
     if (result.genres.length === 0 && Array.isArray(entry.genres) && entry.genres.length) result.genres = entry.genres
     if (result.cast.length === 0 && Array.isArray(entry.cast) && entry.cast.length) result.cast = entry.cast
   }
   return result
+}
+
+function normalizeImdbId(value) {
+  const match = cleanText(value).match(/\btt\d{5,12}\b/i)
+  return match ? match[0].toLowerCase() : ''
 }
 
 function optionFromMetadata(source, provider, score = 0) {
@@ -85,6 +91,7 @@ function optionFromMetadata(source, provider, score = 0) {
   return {
     provider,
     score,
+    imdbId: normalizeImdbId(source.imdbId || source.imdb_id || source.imdb || source.id),
     title: cleanText(source.title || source.name || source.trackName || source.collectionName || source.title_english || source.title_japanese || ''),
     year: candidateYear(source),
     poster,
@@ -348,6 +355,7 @@ async function enrichFromCinemeta(base) {
     const meta = await getCinemetaMeta(base.type, best.candidate.imdb_id || best.candidate.id)
     const source = meta || best.candidate
     return {
+      imdbId: normalizeImdbId(source.imdb_id || source.id || best.candidate.imdb_id || best.candidate.id),
       poster: cleanText(source.poster || best.candidate.poster || ''),
       synopsis: cleanText(source.description || source.overview || ''),
       genres: Array.isArray(source.genre) ? source.genre.map(cleanText).filter(Boolean) : [],
@@ -482,6 +490,7 @@ async function enrichFromWikidata(base) {
     }
 
     return {
+      imdbId: normalizeImdbId(first.imdb?.value || ''),
       poster,
       synopsis,
       genres,

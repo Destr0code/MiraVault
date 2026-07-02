@@ -3,15 +3,6 @@ import { useThemeStore } from '@/store/themeStore'
 import { useToast } from '@/components/ui/Toast'
 import { themes } from '@/config/themes'
 
-function ShieldIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M12 3 5 6v5c0 4.5 2.8 7.9 7 10 4.2-2.1 7-5.5 7-10V6l-7-3Z" />
-      <path d="M9.5 12.5 11.2 14l3.5-4" />
-    </svg>
-  )
-}
-
 function ThemeCard({ theme, active, onClick }) {
   return (
     <button
@@ -210,11 +201,11 @@ export default function Settings() {
       <section className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--bg-card)]/45 p-5">
         <h2 className="text-2xl font-semibold text-[color:var(--text-primary)]">Acerca de</h2>
         <div className="mt-4 flex items-center gap-4 rounded-[22px] border border-[color:var(--border)] bg-black/10 p-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-[20px] bg-[color:var(--accent-muted)] text-[color:var(--accent)]">
-            <ShieldIcon />
+          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[20px] bg-[color:var(--accent-muted)]">
+            <img src="/icon.png" alt="MiraVault" className="h-12 w-12 object-contain" draggable={false} />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-[color:var(--text-primary)]">MiraVault v1.0.0</p>
+            <p className="text-2xl font-semibold text-[color:var(--text-primary)]">MiraVault v0.4.1</p>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[color:var(--text-secondary)]">
               Organizador de biblioteca local para peliculas, series y libros con deteccion automatica de temporadas,
               episodios, calidad, idioma, caratulas, metadatos y progreso de visionado.

@@ -1,6 +1,8 @@
+![MiraVault](media/MiraVault_banner_logo.png)
+
 # MiraVault
 
-**Version actual: `0.4.1-beta`**
+**Version actual: `0.4.1`**
 
 MiraVault es una app de escritorio para organizar, explorar y reproducir una biblioteca multimedia local. Nacio como un gestor de torrents, pero ahora apunta a ser un centro personal para series, peliculas, IPTV, descargas y progreso de visionado.
 
@@ -21,7 +23,7 @@ MiraVault es una app de escritorio para organizar, explorar y reproducir una bib
 
 ## Version
 
-Esta release es **`0.4.1-beta`**.
+Esta release es **`0.4.1`**.
 
 Consulta [CHANGELOG.md](CHANGELOG.md) para ver los cambios por version.
 
@@ -363,7 +365,7 @@ public/          Recursos publicos e iconos
 - electron-store.
 - hls.js.
 
-## Limitaciones conocidas en `0.4.1-beta`
+## Limitaciones conocidas en `0.4.1`
 
 - No hay binarios oficiales publicados todavia para usuario final.
 - El instalador puede necesitar ajustes por equipo hasta estabilizar packaging.

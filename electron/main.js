@@ -35,6 +35,8 @@ const {
 } = require('./mpvPlayer')
 const qbittorrent = require('./qbittorrent')
 const torrentEngine = require('./torrentEngine')
+const iptvBridge = require('./iptvBridge')
+const { listSubtitles, resolveSubtitle } = require('./subtitles')
 
 const isDev = !app.isPackaged
 
@@ -71,6 +73,27 @@ function createWindow() {
 
 const DEFAULTS = {
   theme: 'dark-blue'
+}
+
+function isNetworkMediaUrl(value) {
+  return /^(https?|rtp|udp|rtsp):\/\//i.test(String(value || '').trim())
+}
+
+function getVlcArgs(targetPath, startTime = 0, subtitlePath = '') {
+  const args = []
+  if (isNetworkMediaUrl(targetPath)) {
+    args.push(
+      '--avcodec-hw=none',
+      '--network-caching=3000',
+      '--live-caching=3000',
+      '--clock-jitter=0'
+    )
+  }
+
+  if (Number(startTime) > 0) args.push('--start-time=' + Math.floor(Number(startTime) || 0))
+  if (subtitlePath && fs.existsSync(subtitlePath)) args.push('--sub-file=' + subtitlePath)
+  args.push(targetPath)
+  return args
 }
 
 function runOrganizerWorker(action, rootPath, timeoutMs) {
@@ -127,6 +150,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', async () => {
+  await iptvBridge.stopBridge().catch(() => {})
   app.quit()
 })
 
@@ -185,6 +209,9 @@ ipcMain.handle('iptv:fetchPlaylist', async (_, url) => {
     return { ok: false, error: error.message }
   }
 })
+ipcMain.handle('iptv:startBridge', async (_, url) => iptvBridge.startBridge(url))
+ipcMain.handle('iptv:stopBridge', async () => iptvBridge.stopBridge())
+ipcMain.handle('iptv:getBridgeDebug', async () => iptvBridge.getDebug())
 
 // IPC: config
 ipcMain.handle('config:getTheme', async () => (await getStore()).get('theme', DEFAULTS.theme))
@@ -251,7 +278,10 @@ ipcMain.handle('watch:markWatched', async (_, key) => markWatched(key))
 ipcMain.handle('watch:markUnwatched', async (_, key) => markUnwatched(key))
 ipcMain.handle('watch:clearAll', async () => clearAllProgress())
 
-ipcMain.handle('player:open', async (_, filePath, startTime) => {
+ipcMain.handle('subtitles:list', async (_, payload = {}) => listSubtitles(payload || {}))
+ipcMain.handle('subtitles:resolve', async (_, payload = {}) => resolveSubtitle(payload || {}))
+
+ipcMain.handle('player:open', async (_, filePath, startTime, payload = {}) => {
   const store = await getStore()
   const detectedVlc = 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe'
   const playerExe = store.get('playerPath', '') || (fs.existsSync(detectedVlc) ? detectedVlc : '')
@@ -260,6 +290,8 @@ ipcMain.handle('player:open', async (_, filePath, startTime) => {
   try {
     let args = [filePath]
     let resumed = false
+    const subtitleResult = await resolveSubtitle({ ...payload, filePath }).catch(() => ({ subtitle: null }))
+    const subtitlePath = subtitleResult?.subtitle?.path || ''
 
     if (playerExe && fs.existsSync(playerExe)) {
       // Intentar pasar startTime segun el reproductor configurado
@@ -272,7 +304,7 @@ ipcMain.handle('player:open', async (_, filePath, startTime) => {
         const clock = `${hh}:${mm}:${ss}`
 
         if (name.includes('vlc')) {
-          args = ['--start-time=' + seconds, filePath]
+          args = getVlcArgs(filePath, seconds, subtitlePath)
           resumed = true
         } else if (name.includes('mpc') || name.includes('mpc-hc') || name.includes('mpc-be')) {
           args = [filePath, '/startpos', clock]
@@ -284,13 +316,15 @@ ipcMain.handle('player:open', async (_, filePath, startTime) => {
           args = ['--start=' + seconds, filePath]
           resumed = true
         }
+      } else if (`${path.basename(playerExe, '.exe')} ${playerName}`.toLowerCase().includes('vlc')) {
+        args = getVlcArgs(filePath, 0, subtitlePath)
       }
 
       execFile(playerExe, args, { detached: true })
     } else {
       await shell.openPath(filePath)
     }
-    return { ok: true, resumed: startTime > 0 ? resumed : null }
+    return { ok: true, resumed: startTime > 0 ? resumed : null, subtitle: subtitleResult?.subtitle || null }
   } catch (e) {
     return { ok: false, error: e.message }
   }

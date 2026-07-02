@@ -27,7 +27,11 @@ export function buildEpisodePlayback(item, season, episode, mediaId) {
     filePath: episode.filePath,
     progressKey: getProgressKey(item, season.number, episode.number),
     title: `${item.title} - T${season.number}E${String(episode.number).padStart(2, '0')} ${episode.title}`,
-    backTo: `/media/${encodeURIComponent(mediaId || item.id)}`
+    backTo: `/media/${encodeURIComponent(mediaId || item.id)}`,
+    type: item.type,
+    imdbId: item.imdbId || '',
+    season: season.number,
+    episode: episode.number
   }
 }
 

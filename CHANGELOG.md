@@ -2,6 +2,26 @@
 
 Todas las notas importantes de MiraVault se documentan aqui por version.
 
+## [0.4.1] - 2026-07-02
+
+### Added
+
+- Instalador Windows NSIS generado para distribucion publica.
+- Branding final inicial con icono, simbolo y banner de MiraVault.
+- Sistema automatico de subtitulos: primero busca archivos locales y despues usa OpenSubtitles v3 via Stremio cuando hay IMDb ID.
+- Bridge IPTV para preparar streams `rtp://`, `udp://` y `rtsp://` como HLS local cuando sea posible.
+
+### Changed
+
+- La app queda marcada como `0.4.1` en lugar de `0.4.1-beta`.
+- VLC recibe subtitulos automaticamente al abrir peliculas o episodios.
+- La metadata conserva `imdbId` para mejorar busqueda de subtitulos.
+
+### Known Issues
+
+- El instalador no esta firmado digitalmente, por lo que Windows SmartScreen puede mostrar aviso de editor desconocido.
+- IPTV avanzado sigue dependiendo de FFmpeg/VLC y de la calidad real del stream origen.
+
 ## [0.4.1-beta] - 2026-07-01
 
 ### Added

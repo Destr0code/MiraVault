@@ -1,6 +1,6 @@
 {
   "name": "miravault",
-  "version": "0.4.1-beta",
+  "version": "0.4.1",
   "description": "Centro multimedia local para biblioteca, IPTV, torrents y progreso de visionado",
   "main": "electron/main.js",
   "scripts": {

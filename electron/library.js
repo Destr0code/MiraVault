@@ -83,7 +83,7 @@ async function saveMetadataOverrides(overrides) {
 
 function sanitizeMetadataOverride(data = {}) {
   const override = {}
-  const stringFields = ['title', 'year', 'poster', 'synopsis', 'duration', 'director', 'rating']
+  const stringFields = ['imdbId', 'title', 'year', 'poster', 'synopsis', 'duration', 'director', 'rating']
   for (const field of stringFields) {
     if (Object.prototype.hasOwnProperty.call(data, field)) override[field] = cleanText(data[field])
   }
@@ -999,6 +999,7 @@ function summarizeLanguage(values) {
 function createBaseItem(type, title, year) {
   return {
     id: makeId(type, title, year),
+    imdbId: '',
     title,
     year,
     type,
@@ -1218,6 +1219,7 @@ async function enrichItems(items) {
     const metadata = await enrichMetadata(item)
     enriched.push(applyMetadataOverride({
       ...item,
+      imdbId: metadata.imdbId || item.imdbId || '',
       poster: metadata.poster || item.poster,
       synopsis: metadata.synopsis || item.synopsis,
       genres: metadata.genres || item.genres,

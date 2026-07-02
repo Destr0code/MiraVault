@@ -241,7 +241,7 @@ function MetadataEditor({ detail, onSave, onReset }) {
   )
 }
 
-function FileActions({ filePath, onPlay, progressKey, title }) {
+function FileActions({ filePath, onPlay, progressKey, title, playbackMeta }) {
   const progress = useWatchProgressStore((state) => state.progress[progressKey])
   const markWatched = useWatchProgressStore((state) => state.markWatched)
   const markUnwatched = useWatchProgressStore((state) => state.markUnwatched)
@@ -249,7 +249,7 @@ function FileActions({ filePath, onPlay, progressKey, title }) {
   const pct = progressPercent(progress)
 
   async function handlePlay() {
-    await onPlay({ filePath, progressKey, title, startTime: progress?.currentTime || 0 })
+    await onPlay({ filePath, progressKey, title, startTime: progress?.currentTime || 0, playbackMeta })
   }
 
   async function handleMarkWatched() {
@@ -356,18 +356,20 @@ export default function MediaDetails() {
     }
   }, [mediaId])
 
-  async function handlePlay({ filePath, progressKey, title, startTime = 0, nextEpisode = null }) {
+  async function handlePlay({ filePath, progressKey, title, startTime = 0, nextEpisode = null, playbackMeta = {} }) {
     const result = await window.electronAPI?.playerOpenTracked?.({
       filePath,
       progressKey,
       title,
       startTime,
       nextEpisode,
-      backTo: `/media/${encodeURIComponent(mediaId)}`
+      backTo: `/media/${encodeURIComponent(mediaId)}`,
+      ...playbackMeta
     })
 
     if (result?.ok) {
-      show(startTime > 0 ? 'Continuando en VLC' : 'Reproduciendo en VLC', 'success')
+      const subtitleLabel = result.subtitle?.lang ? ` con subtitulos ${result.subtitle.lang.toUpperCase()}` : ''
+      show((startTime > 0 ? 'Continuando en VLC' : 'Reproduciendo en VLC') + subtitleLabel, 'success')
       return
     }
 
@@ -394,7 +396,11 @@ export default function MediaDetails() {
       filePath: next.episode.filePath,
       progressKey: getProgressKey(detail, next.season.number, next.episode.number),
       title: `${detail.title} - T${next.season.number}E${String(next.episode.number).padStart(2, '0')} ${next.episode.title}`,
-      backTo: `/media/${encodeURIComponent(mediaId)}`
+      backTo: `/media/${encodeURIComponent(mediaId)}`,
+      type: detail.type,
+      imdbId: detail.imdbId || '',
+      season: next.season.number,
+      episode: next.episode.number
     }
   }
 
@@ -649,6 +655,12 @@ export default function MediaDetails() {
                                   })}
                                   progressKey={epKey}
                                   title={`${detail.title} - T${season.number}E${String(episode.number).padStart(2, '0')} ${episode.title}`}
+                                  playbackMeta={{
+                                    type: detail.type,
+                                    imdbId: detail.imdbId || '',
+                                    season: season.number,
+                                    episode: episode.number
+                                  }}
                                 />
                               </div>
                             </div>
@@ -701,7 +713,16 @@ export default function MediaDetails() {
                       {file.quality ? <span className="text-xs text-[color:var(--text-secondary)]">{file.quality}</span> : null}
                       {file.language ? <span className="text-xs text-[color:var(--text-secondary)]">{file.language}</span> : null}
                       <span className="text-xs text-[color:var(--text-secondary)]">{formatSize(file.size)}</span>
-                      <FileActions filePath={file.path} onPlay={handlePlay} progressKey={fileKey} title={detail.title} />
+                      <FileActions
+                        filePath={file.path}
+                        onPlay={handlePlay}
+                        progressKey={fileKey}
+                        title={detail.title}
+                        playbackMeta={{
+                          type: detail.type,
+                          imdbId: detail.imdbId || ''
+                        }}
+                      />
                     </div>
                   </div>
                 )

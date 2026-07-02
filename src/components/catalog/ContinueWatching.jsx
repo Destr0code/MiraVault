@@ -67,6 +67,9 @@ export default function ContinueWatching() {
           pct: progressPercent(summary.current.progress),
           filePath: isEpisode ? summary.current.episode.filePath : item.files?.[0]?.path || '',
           nextEpisode: isEpisode ? getNextUnwatchedEpisode(item, progress, item.id) : null,
+          playbackMeta: isEpisode
+            ? { type: item.type, imdbId: item.imdbId || '', season: summary.current.season.number, episode: summary.current.episode.number }
+            : { type: item.type, imdbId: item.imdbId || '' },
           updatedAt: summary.current.progress.updatedAt || 0
         })
         continue
@@ -85,6 +88,12 @@ export default function ContinueWatching() {
             pct: summary.percent,
             filePath: next.filePath,
             nextEpisode: null,
+            playbackMeta: {
+              type: item.type,
+              imdbId: item.imdbId || '',
+              season: next.season,
+              episode: next.episode
+            },
             updatedAt: item.updatedAt || 0
           })
         }
@@ -118,11 +127,13 @@ export default function ContinueWatching() {
       title: entry.label,
       startTime: entry.type === 'continue' ? entry.progress.currentTime : 0,
       nextEpisode: entry.nextEpisode,
-      backTo: `/media/${encodeURIComponent(entry.mediaId)}`
+      backTo: `/media/${encodeURIComponent(entry.mediaId)}`,
+      ...entry.playbackMeta
     })
 
     if (result?.ok) {
-      show(entry.type === 'continue' ? 'Continuando en VLC' : 'Reproduciendo en VLC', 'success')
+      const subtitleLabel = result.subtitle?.lang ? ` con subtitulos ${result.subtitle.lang.toUpperCase()}` : ''
+      show((entry.type === 'continue' ? 'Continuando en VLC' : 'Reproduciendo en VLC') + subtitleLabel, 'success')
       return
     }
 
