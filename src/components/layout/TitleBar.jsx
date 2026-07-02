@@ -1,3 +1,5 @@
+import BrandMark from '@/components/ui/BrandMark'
+
 function MinimizeIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -49,7 +51,7 @@ export default function TitleBar() {
     >
       <div className="flex items-center gap-2 text-[color:var(--text-primary)]">
         <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-md bg-[color:var(--accent-muted)]">
-          <img src="/icon.png" alt="" className="h-5 w-5 object-contain" draggable={false} />
+          <BrandMark className="h-5 w-5 object-contain text-[color:var(--accent)]" alt="" />
         </div>
         <span className="text-sm font-medium">MiraVault</span>
       </div>

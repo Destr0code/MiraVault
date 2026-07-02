@@ -37,6 +37,7 @@ const qbittorrent = require('./qbittorrent')
 const torrentEngine = require('./torrentEngine')
 const iptvBridge = require('./iptvBridge')
 const { listSubtitles, resolveSubtitle } = require('./subtitles')
+const { getEpisodeMetadata } = require('./episodeMetadata')
 
 const isDev = !app.isPackaged
 
@@ -48,6 +49,15 @@ app.commandLine.appendSwitch('disable-zero-copy')
 
 let mainWindow
 
+function getWindowIconPath() {
+  const candidates = [
+    path.join(__dirname, '../dist/icon.ico'),
+    path.join(__dirname, '../public/icon.ico'),
+    path.join(process.cwd(), 'public/icon.ico')
+  ]
+  return candidates.find((candidate) => fs.existsSync(candidate)) || undefined
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -55,6 +65,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     frame: false,
+    icon: getWindowIconPath(),
     backgroundColor: '#0f0f1a',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -190,6 +201,17 @@ ipcMain.handle('dialog:selectTorrentFiles', async () => {
 
 ipcMain.handle('shell:openFolder', (_, targetPath) => shell.openPath(targetPath))
 ipcMain.handle('shell:openPath', (_, targetPath) => shell.openPath(targetPath))
+ipcMain.handle('media:trashPath', async (_, targetPath) => {
+  const resolvedPath = path.resolve(String(targetPath || ''))
+  if (!resolvedPath || !fs.existsSync(resolvedPath)) return { ok: false, error: 'La ruta no existe.' }
+
+  try {
+    await shell.trashItem(resolvedPath)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: error.message || 'No se pudo mover a la papelera.' }
+  }
+})
 
 ipcMain.handle('iptv:fetchPlaylist', async (_, url) => {
   const targetUrl = String(url || '').trim()
@@ -280,6 +302,7 @@ ipcMain.handle('watch:clearAll', async () => clearAllProgress())
 
 ipcMain.handle('subtitles:list', async (_, payload = {}) => listSubtitles(payload || {}))
 ipcMain.handle('subtitles:resolve', async (_, payload = {}) => resolveSubtitle(payload || {}))
+ipcMain.handle('episode:metadata', async (_, payload = {}) => getEpisodeMetadata(payload || {}))
 
 ipcMain.handle('player:open', async (_, filePath, startTime, payload = {}) => {
   const store = await getStore()

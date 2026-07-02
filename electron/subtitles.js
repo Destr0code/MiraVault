@@ -49,6 +49,7 @@ function findLocalSubtitles(filePath) {
         lang: detectLanguageFromName(subtitlePath),
         path: subtitlePath,
         label: path.basename(subtitlePath),
+        fileName: path.basename(subtitlePath),
         score: scoreLocalSubtitle(subtitlePath, videoBase)
       }))
       .sort((a, b) => b.score - a.score)
@@ -136,11 +137,12 @@ async function findStremioSubtitles(payload = {}) {
       .filter((entry) => entry?.url)
       .map((entry) => ({
         id: `stremio:${entry.id || entry.url}`,
+        remoteId: cleanText(entry.id || ''),
         source: 'opensubtitles-stremio',
         lang: cleanText(entry.lang),
         encoding: cleanText(entry.SubEncoding),
         url: entry.url,
-        label: `${cleanText(entry.lang).toUpperCase() || 'SUB'} - OpenSubtitles`,
+        label: `${cleanText(entry.lang).toUpperCase() || 'SUB'} - OpenSubtitles${entry.id ? ` #${entry.id}` : ''}`,
         score: scoreRemoteSubtitle(entry)
       }))
       .sort((a, b) => b.score - a.score)
@@ -170,8 +172,14 @@ async function downloadRemoteSubtitle(subtitle, payload = {}) {
 
 async function resolveSubtitle(payload = {}) {
   const subtitles = await listSubtitles(payload)
-  const selected = subtitles[0] || null
-  if (!selected) return { ok: true, subtitle: null, subtitles: [] }
+  const subtitleId = cleanText(payload.subtitleId || 'auto')
+  if (subtitleId === 'none') return { ok: true, subtitle: null, subtitles }
+
+  const selected = subtitleId === 'auto'
+    ? subtitles[0] || null
+    : subtitles.find((subtitle) => subtitle.id === subtitleId) || null
+
+  if (!selected) return { ok: true, subtitle: null, subtitles }
 
   if (selected.source === 'local') {
     return { ok: true, subtitle: selected, subtitles }

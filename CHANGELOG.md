@@ -2,6 +2,26 @@
 
 Todas las notas importantes de MiraVault se documentan aqui por version.
 
+## [0.4.2] - 2026-07-02
+
+### Added
+
+- Popup de episodio al hacer click en un capitulo, con nota, sinopsis, progreso, subtitulos y acciones.
+- Metadata de episodio desde TVMaze con cache local.
+- Acciones para abrir carpeta y enviar archivo/carpeta a la papelera desde el popup.
+- Componente `BrandMark` con fallback SVG para evitar iconos rotos en la app instalada.
+
+### Changed
+
+- La seleccion de subtitulos ahora permite elegir `auto`, `sin subtitulos` o un subtitulo concreto.
+- El logo de la titlebar y Ajustes se empaqueta como asset de Vite con fallback seguro.
+- La ventana de Electron define icono explicitamente para mejorar barra de tareas/ventana en Windows.
+
+### Fixed
+
+- Logo roto en la app instalada cuando la ruta del PNG no resolvia bien.
+- Selector de subtitulos que antes siempre dependia de modo automatico.
+
 ## [0.4.1] - 2026-07-02
 
 ### Added

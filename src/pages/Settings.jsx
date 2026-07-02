@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useThemeStore } from '@/store/themeStore'
 import { useToast } from '@/components/ui/Toast'
 import { themes } from '@/config/themes'
+import BrandMark from '@/components/ui/BrandMark'
 
 function ThemeCard({ theme, active, onClick }) {
   return (
@@ -202,10 +203,10 @@ export default function Settings() {
         <h2 className="text-2xl font-semibold text-[color:var(--text-primary)]">Acerca de</h2>
         <div className="mt-4 flex items-center gap-4 rounded-[22px] border border-[color:var(--border)] bg-black/10 p-5">
           <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[20px] bg-[color:var(--accent-muted)]">
-            <img src="/icon.png" alt="MiraVault" className="h-12 w-12 object-contain" draggable={false} />
+            <BrandMark className="h-12 w-12 object-contain text-[color:var(--accent)]" />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-[color:var(--text-primary)]">MiraVault v0.4.1</p>
+            <p className="text-2xl font-semibold text-[color:var(--text-primary)]">MiraVault v0.4.2</p>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[color:var(--text-secondary)]">
               Organizador de biblioteca local para peliculas, series y libros con deteccion automatica de temporadas,
               episodios, calidad, idioma, caratulas, metadatos y progreso de visionado.

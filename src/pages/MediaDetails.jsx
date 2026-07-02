@@ -46,6 +46,10 @@ function formatSize(bytes) {
   return `${Math.round(value)} B`
 }
 
+function getDirectoryName(filePath) {
+  return String(filePath || '').replace(/[\\/][^\\/]+$/, '')
+}
+
 function Poster({ detail }) {
   const [imageError, setImageError] = useState(false)
 
@@ -80,6 +84,18 @@ function UndoIcon() {
     <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M3 10h13a4 4 0 0 1 0 8H7" />
       <path d="m7 6-4 4 4 4" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 7h16" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M6 7l1 13h10l1-13" />
+      <path d="M9 7V4h6v3" />
     </svg>
   )
 }
@@ -241,15 +257,310 @@ function MetadataEditor({ detail, onSave, onReset }) {
   )
 }
 
+function EpisodeModal({ detail, season, episode, progressKey, progress, nextEpisode, onClose, onPlay, onDeleted }) {
+  const { show } = useToast()
+  const markWatched = useWatchProgressStore((state) => state.markWatched)
+  const markUnwatched = useWatchProgressStore((state) => state.markUnwatched)
+  const pct = progressPercent(progress)
+  const filePath = episode?.filePath || ''
+  const title = `${detail.title} - T${season.number}E${String(episode.number).padStart(2, '0')} ${episode.title}`
+  const playbackMeta = {
+    type: detail.type,
+    imdbId: detail.imdbId || '',
+    season: season.number,
+    episode: episode.number
+  }
+  const [metadata, setMetadata] = useState(null)
+  const [metadataLoading, setMetadataLoading] = useState(true)
+  const [subtitles, setSubtitles] = useState([])
+  const [loadingSubtitles, setLoadingSubtitles] = useState(false)
+  const [subtitleId, setSubtitleId] = useState('auto')
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadMetadata() {
+      setMetadataLoading(true)
+      try {
+        const result = await window.electronAPI?.episodeMetadata?.({
+          seriesTitle: detail.title,
+          imdbId: detail.imdbId || '',
+          season: season.number,
+          episode: episode.number
+        })
+        if (!cancelled) setMetadata(result?.metadata || null)
+      } catch {
+        if (!cancelled) setMetadata(null)
+      } finally {
+        if (!cancelled) setMetadataLoading(false)
+      }
+    }
+
+    loadMetadata()
+    return () => {
+      cancelled = true
+    }
+  }, [detail.title, detail.imdbId, season.number, episode.number])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadSubtitles() {
+      setLoadingSubtitles(true)
+      try {
+        const result = await window.electronAPI?.subtitlesList?.({
+          filePath,
+          title,
+          progressKey,
+          ...playbackMeta
+        })
+        if (!cancelled) setSubtitles(Array.isArray(result) ? result : [])
+      } catch {
+        if (!cancelled) setSubtitles([])
+      } finally {
+        if (!cancelled) setLoadingSubtitles(false)
+      }
+    }
+
+    loadSubtitles()
+    return () => {
+      cancelled = true
+    }
+  }, [filePath, title, progressKey, detail.imdbId, season.number, episode.number])
+
+  async function handlePlay() {
+    await onPlay({
+      filePath,
+      progressKey,
+      title,
+      startTime: progress?.currentTime || 0,
+      nextEpisode,
+      playbackMeta: {
+        ...playbackMeta,
+        subtitleId
+      }
+    })
+  }
+
+  async function handleMarkWatched() {
+    await markWatched(progressKey)
+    show('Marcado como visto', 'success')
+  }
+
+  async function handleMarkUnwatched() {
+    await markUnwatched(progressKey)
+    show('Marcado como no visto', 'info')
+  }
+
+  async function handleTrashFile() {
+    if (!window.confirm('Mover este archivo de video a la papelera?')) return
+    const result = await window.electronAPI?.trashPath?.(filePath)
+    if (!result?.ok) {
+      show(result?.error || 'No se pudo mover el archivo a la papelera.', 'error')
+      return
+    }
+    show('Archivo enviado a la papelera', 'success')
+    await window.electronAPI?.libraryRescan?.()
+    await onDeleted?.()
+  }
+
+  async function handleTrashFolder() {
+    const folder = getDirectoryName(filePath)
+    if (!folder || !window.confirm(`Mover esta carpeta a la papelera?\n\n${folder}`)) return
+    const result = await window.electronAPI?.trashPath?.(folder)
+    if (!result?.ok) {
+      show(result?.error || 'No se pudo mover la carpeta a la papelera.', 'error')
+      return
+    }
+    show('Carpeta enviada a la papelera', 'success')
+    await window.electronAPI?.libraryRescan?.()
+    await onDeleted?.()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-[28px] border border-white/10 bg-[color:var(--bg-secondary)] shadow-[0_30px_120px_rgba(0,0,0,0.65)]">
+        <div className="flex items-start justify-between gap-4 border-b border-[color:var(--border)] p-5">
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-[0.26em] text-[color:var(--accent)]">Temporada {season.number} · Episodio {episode.number}</p>
+            <h2 className="mt-2 text-2xl font-semibold text-[color:var(--text-primary)]">
+              {metadata?.title || episode.title || `Episodio ${episode.number}`}
+            </h2>
+            <p className="mt-1 truncate text-xs text-[color:var(--text-muted)]">{filePath}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-hover)]"
+          >
+            Cerrar
+          </button>
+        </div>
+
+        <div className="grid max-h-[calc(92vh-86px)] gap-5 overflow-y-auto p-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-[22px] border border-[color:var(--border)] bg-black/20">
+              {metadata?.image ? (
+                <img src={metadata.image} alt={metadata.title || episode.title} className="aspect-video w-full object-cover" />
+              ) : (
+                <div className="flex aspect-video items-center justify-center bg-[linear-gradient(135deg,var(--accent-muted),transparent)] p-6 text-center text-sm text-[color:var(--text-secondary)]">
+                  {metadataLoading ? 'Buscando imagen...' : 'Sin imagen de episodio'}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-[color:var(--border)] bg-black/10 p-3">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Nota</p>
+                <p className="mt-2 text-lg font-semibold text-[color:var(--text-primary)]">{metadata?.rating || 'N/D'}</p>
+              </div>
+              <div className="rounded-2xl border border-[color:var(--border)] bg-black/10 p-3">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Progreso</p>
+                <p className="mt-2 text-lg font-semibold text-[color:var(--text-primary)]">{progress?.watched ? 'Visto' : `${pct}%`}</p>
+              </div>
+              <div className="rounded-2xl border border-[color:var(--border)] bg-black/10 p-3">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Calidad</p>
+                <p className="mt-2 text-sm font-medium text-[color:var(--text-primary)]">{episode.quality || detail.quality || 'N/D'}</p>
+              </div>
+              <div className="rounded-2xl border border-[color:var(--border)] bg-black/10 p-3">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Tamano</p>
+                <p className="mt-2 text-sm font-medium text-[color:var(--text-primary)]">{formatSize(episode.size)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            <section>
+              <h3 className="text-sm uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Sinopsis del episodio</h3>
+              <p className="mt-3 text-sm leading-7 text-[color:var(--text-secondary)]">
+                {metadataLoading ? 'Buscando sinopsis...' : metadata?.synopsis || 'Sin sinopsis disponible para este episodio.'}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-[color:var(--text-muted)]">
+                {metadata?.airDate ? <span>Emision: {metadata.airDate}</span> : null}
+                {metadata?.runtime ? <span>Duracion: {metadata.runtime}</span> : null}
+                {metadata?.provider ? <span>Fuente: {metadata.provider}</span> : null}
+              </div>
+            </section>
+
+            {pct > 0 && pct < 100 ? (
+              <div className="h-2 overflow-hidden rounded-full bg-black/25">
+                <div className="h-full rounded-full bg-[color:var(--accent)]" style={{ width: `${pct}%` }} />
+              </div>
+            ) : null}
+
+            <section className="rounded-2xl border border-[color:var(--border)] bg-black/10 p-4">
+              <h3 className="text-sm uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Ajustes de reproduccion</h3>
+              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                <select
+                  value={subtitleId}
+                  onChange={(event) => setSubtitleId(event.target.value)}
+                  className="rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-3 py-3 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                >
+                  <option value="auto">{loadingSubtitles ? 'Buscando subtitulos...' : 'Subtitulos auto'}</option>
+                  <option value="none">Sin subtitulos</option>
+                  {subtitles.map((subtitle) => (
+                    <option key={subtitle.id} value={subtitle.id}>
+                      {subtitle.lang ? `${subtitle.lang.toUpperCase()} - ` : ''}{subtitle.label || subtitle.fileName || subtitle.source}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setLoadingSubtitles(true)
+                    try {
+                      const result = await window.electronAPI?.subtitlesList?.({ filePath, title, progressKey, ...playbackMeta })
+                      setSubtitles(Array.isArray(result) ? result : [])
+                    } finally {
+                      setLoadingSubtitles(false)
+                    }
+                  }}
+                  className="rounded-xl border border-[color:var(--border)] px-4 py-3 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-hover)]"
+                >
+                  Buscar subtitulos
+                </button>
+              </div>
+            </section>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handlePlay}
+                className="inline-flex items-center gap-2 rounded-xl bg-[color:var(--accent)] px-5 py-3 text-sm font-medium text-white transition hover:brightness-110"
+              >
+                <PlayIcon />
+                {progress && !progress.watched && progress.currentTime > 0 ? `Continuar ${formatProgress(progress)}` : 'Reproducir'}
+              </button>
+              <button type="button" onClick={() => window.electronAPI?.openFolder?.(getDirectoryName(filePath))} className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border)] px-4 py-3 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-hover)]">
+                <FolderIcon />
+                Abrir carpeta
+              </button>
+              {progress?.watched ? (
+                <button type="button" onClick={handleMarkUnwatched} className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border)] px-4 py-3 text-sm text-[color:var(--text-secondary)] transition hover:bg-[color:var(--bg-hover)]">
+                  <UndoIcon />
+                  No visto
+                </button>
+              ) : (
+                <button type="button" onClick={handleMarkWatched} className="inline-flex items-center gap-2 rounded-xl border border-[#1f8b58]/40 px-4 py-3 text-sm text-[#84d49c] transition hover:bg-[#1f8b58]/15">
+                  <CheckIcon />
+                  Marcar visto
+                </button>
+              )}
+              <button type="button" onClick={handleTrashFile} className="inline-flex items-center gap-2 rounded-xl border border-[#e05555]/35 px-4 py-3 text-sm text-[#e05555] transition hover:bg-[#e05555]/10">
+                <TrashIcon />
+                Eliminar archivo
+              </button>
+              <button type="button" onClick={handleTrashFolder} className="inline-flex items-center gap-2 rounded-xl border border-[#e05555]/35 px-4 py-3 text-sm text-[#e05555] transition hover:bg-[#e05555]/10">
+                <TrashIcon />
+                Eliminar carpeta
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function FileActions({ filePath, onPlay, progressKey, title, playbackMeta }) {
   const progress = useWatchProgressStore((state) => state.progress[progressKey])
   const markWatched = useWatchProgressStore((state) => state.markWatched)
   const markUnwatched = useWatchProgressStore((state) => state.markUnwatched)
   const { show } = useToast()
   const pct = progressPercent(progress)
+  const [subtitles, setSubtitles] = useState([])
+  const [subtitlesLoaded, setSubtitlesLoaded] = useState(false)
+  const [loadingSubtitles, setLoadingSubtitles] = useState(false)
+  const [subtitleId, setSubtitleId] = useState('auto')
+
+  async function loadSubtitles(force = false) {
+    if ((subtitlesLoaded && !force) || loadingSubtitles) return
+    setLoadingSubtitles(true)
+    try {
+      const result = await window.electronAPI?.subtitlesList?.({
+        filePath,
+        title,
+        progressKey,
+        ...playbackMeta
+      })
+      setSubtitles(Array.isArray(result) ? result : [])
+      setSubtitlesLoaded(true)
+    } catch {
+      show('No se pudieron cargar los subtitulos.', 'error')
+    } finally {
+      setLoadingSubtitles(false)
+    }
+  }
 
   async function handlePlay() {
-    await onPlay({ filePath, progressKey, title, startTime: progress?.currentTime || 0, playbackMeta })
+    await onPlay({
+      filePath,
+      progressKey,
+      title,
+      startTime: progress?.currentTime || 0,
+      playbackMeta: {
+        ...playbackMeta,
+        subtitleId
+      }
+    })
   }
 
   async function handleMarkWatched() {
@@ -271,6 +582,30 @@ function FileActions({ filePath, onPlay, progressKey, title, playbackMeta }) {
       >
         <PlayIcon />
         {progress && !progress.watched && progress.currentTime > 0 ? 'Continuar' : 'Reproducir'}
+      </button>
+      <select
+        value={subtitleId}
+        onFocus={() => loadSubtitles(false)}
+        onMouseDown={() => loadSubtitles(false)}
+        onChange={(event) => setSubtitleId(event.target.value)}
+        className="max-w-[190px] rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-3 py-2 text-xs text-[color:var(--text-primary)] outline-none transition focus:border-[color:var(--accent)]"
+        title="Seleccion de subtitulos"
+      >
+        <option value="auto">{loadingSubtitles ? 'Buscando subtitulos...' : 'Subtitulos auto'}</option>
+        <option value="none">Sin subtitulos</option>
+        {subtitles.map((subtitle) => (
+          <option key={subtitle.id} value={subtitle.id}>
+            {subtitle.lang ? `${subtitle.lang.toUpperCase()} - ` : ''}{subtitle.label || subtitle.fileName || subtitle.source}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => loadSubtitles(true)}
+        disabled={loadingSubtitles}
+        className="rounded-xl border border-[color:var(--border)] px-3 py-2 text-xs text-[color:var(--text-secondary)] transition hover:bg-[color:var(--bg-hover)] disabled:opacity-50"
+      >
+        Subs
       </button>
       <button
         type="button"
@@ -314,6 +649,7 @@ export default function MediaDetails() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expandedSeason, setExpandedSeason] = useState(null)
+  const [selectedEpisode, setSelectedEpisode] = useState(null)
 
   const progress = useWatchProgressStore((state) => state.progress)
   const statuses = useLibraryStatusStore((state) => state.statuses)
@@ -355,6 +691,17 @@ export default function MediaDetails() {
       cancelled = true
     }
   }, [mediaId])
+
+  async function reloadDetailAfterFileChange() {
+    const data = await window.electronAPI?.libraryGetItem?.(mediaId)
+    if (!data) {
+      setSelectedEpisode(null)
+      setError('No se encontro este contenido en tu biblioteca.')
+      return
+    }
+    setDetail(data)
+    setSelectedEpisode(null)
+  }
 
   async function handlePlay({ filePath, progressKey, title, startTime = 0, nextEpisode = null, playbackMeta = {} }) {
     const result = await window.electronAPI?.playerOpenTracked?.({
@@ -614,9 +961,11 @@ export default function MediaDetails() {
                           const epProgress = progress[epKey]
                           const epPct = progressPercent(epProgress)
                           return (
-                            <div
+                            <button
+                              type="button"
                               key={`${season.number}-${episode.number}-${episode.filePath}`}
-                              className="flex flex-col gap-3 rounded-2xl border border-[color:var(--border)] bg-black/10 p-4 lg:flex-row lg:items-center lg:justify-between"
+                              onClick={() => setSelectedEpisode({ season, episode, progressKey: epKey })}
+                              className="flex w-full flex-col gap-3 rounded-2xl border border-[color:var(--border)] bg-black/10 p-4 text-left transition hover:border-[color:var(--accent)] hover:bg-[color:var(--bg-hover)] lg:flex-row lg:items-center lg:justify-between"
                             >
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-3">
@@ -647,23 +996,9 @@ export default function MediaDetails() {
                                 {episode.quality ? <span className="text-xs text-[color:var(--text-secondary)]">{episode.quality}</span> : null}
                                 {episode.language ? <span className="text-xs text-[color:var(--text-secondary)]">{episode.language}</span> : null}
                                 <span className="text-xs text-[color:var(--text-secondary)]">{formatSize(episode.size)}</span>
-                                <FileActions
-                                  filePath={episode.filePath}
-                                  onPlay={(payload) => handlePlay({
-                                    ...payload,
-                                    nextEpisode: getNextEpisode(season.number, episode.number)
-                                  })}
-                                  progressKey={epKey}
-                                  title={`${detail.title} - T${season.number}E${String(episode.number).padStart(2, '0')} ${episode.title}`}
-                                  playbackMeta={{
-                                    type: detail.type,
-                                    imdbId: detail.imdbId || '',
-                                    season: season.number,
-                                    episode: episode.number
-                                  }}
-                                />
+                                <span className="rounded-xl bg-[color:var(--accent-muted)] px-3 py-2 text-xs font-medium text-[color:var(--accent)]">Detalles</span>
                               </div>
-                            </div>
+                            </button>
                           )
                         })}
                       </div>
@@ -731,6 +1066,19 @@ export default function MediaDetails() {
           )}
         </div>
       </div>
+      {selectedEpisode ? (
+        <EpisodeModal
+          detail={detail}
+          season={selectedEpisode.season}
+          episode={selectedEpisode.episode}
+          progressKey={selectedEpisode.progressKey}
+          progress={progress[selectedEpisode.progressKey]}
+          nextEpisode={getNextEpisode(selectedEpisode.season.number, selectedEpisode.episode.number)}
+          onClose={() => setSelectedEpisode(null)}
+          onPlay={handlePlay}
+          onDeleted={reloadDetailAfterFileChange}
+        />
+      ) : null}
     </div>
   )
 }
