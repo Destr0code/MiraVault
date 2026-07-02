@@ -10,6 +10,7 @@ const SUBTITLE_EXTENSIONS = new Set(['.srt', '.ass', '.ssa', '.vtt', '.sub'])
 const BOOK_EXTENSIONS = new Set(['.epub', '.pdf', '.mobi', '.azw3', '.cbz', '.cbr'])
 const MEDIA_EXTENSIONS = new Set([...VIDEO_EXTENSIONS, ...BOOK_EXTENSIONS])
 const DISPOSABLE_EXTENSIONS = new Set(['.torrent', '.nfo', '.txt', '.url', '.lnk', '.sfv', '.srr', '.idx'])
+const ARCHIVE_EXTENSIONS = new Set(['.rar', '.zip', '.7z', '.tar', '.gz', '.bz2', '.xz'])
 const DISPOSABLE_NAMES = new Set(['thumbs.db', 'desktop.ini', '.ds_store'])
 const PARTIAL_EXTENSIONS = new Set(['.!qb', '.part', '.crdownload', '.download', '.tmp', '.!ut'])
 const RELEASE_WORDS = [
@@ -23,7 +24,9 @@ const RELEASE_WORDS = [
 
 function organizerDebug(...args) {
   if (process.env.MIRAVAULT_ORGANIZER_DEBUG === '1') {
-    console.log('[library-organizer]', ...args)
+    const payload = args.length === 1 ? args[0] : args
+    const text = typeof payload === 'string' ? payload : JSON.stringify(payload)
+    console.error(`[library-organizer ${new Date().toISOString()}] ${text}`)
   }
 }
 
@@ -205,6 +208,8 @@ function withFsTimeout(promise, ms, fallbackValue) {
 async function walkAllFilesAsync(entryPath, bucket, options = {}) {
   const maxFiles = Number(options.maxFiles || 20000)
   const maxMs = Number(options.maxMs || 8000)
+  const statTimeoutMs = Number(options.statTimeoutMs || 350)
+  const readDirTimeoutMs = Number(options.readDirTimeoutMs || Math.max(800, statTimeoutMs))
   const startedAt = Date.now()
   const visited = new Set()
   const stack = [path.resolve(entryPath)]
@@ -220,11 +225,18 @@ async function walkAllFilesAsync(entryPath, bucket, options = {}) {
     if (visited.has(resolved)) continue
     visited.add(resolved)
 
-    const stats = await withFsTimeout(fs.promises.lstat(resolved).catch(() => null), 350, null)
-    if (!stats) continue
-    if (stats.isSymbolicLink()) continue
+    const stats = await withFsTimeout(fs.promises.lstat(resolved).catch(() => null), statTimeoutMs, null)
+    if (!stats) {
+      organizerDebug({ phase: 'scan:stat-missing-or-timeout', path: resolved })
+      continue
+    }
+    if (stats.isSymbolicLink()) {
+      organizerDebug({ phase: 'scan:skip-symlink', path: resolved })
+      continue
+    }
 
     if (stats.isFile()) {
+      organizerDebug({ phase: 'scan:file', path: resolved, size: stats.size })
       bucket.push({
         path: resolved,
         size: stats.size,
@@ -234,7 +246,9 @@ async function walkAllFilesAsync(entryPath, bucket, options = {}) {
         return { truncated: true, timedOut: false, visited: visitedEntries }
       }
     } else if (stats.isDirectory()) {
-      const entries = await withFsTimeout(fs.promises.readdir(resolved, { withFileTypes: true }).catch(() => []), 800, [])
+      organizerDebug({ phase: 'scan:directory', path: resolved })
+      const entries = await withFsTimeout(fs.promises.readdir(resolved, { withFileTypes: true }).catch(() => []), readDirTimeoutMs, [])
+      organizerDebug({ phase: 'scan:directory-entries', path: resolved, entries: entries.length })
       for (let index = entries.length - 1; index >= 0; index -= 1) {
         const entry = entries[index]
         if (entry.isSymbolicLink()) continue
@@ -450,12 +464,12 @@ function buildOrganizationTargetName(parsed, duplicateIndex = 0) {
     if (parsed.quality) tags.push(parsed.quality)
     if (parsed.language) tags.push(parsed.language)
     if (parsed.codec) tags.push(parsed.codec)
-    if (duplicateIndex > 0) tags.push(`duplicate ${duplicateIndex + 1}`)
   } else if (parsed.ext && !SUBTITLE_EXTENSIONS.has(parsed.ext)) {
     const originalBase = safeName(path.basename(parsed.file.path, parsed.ext))
     const suffix = originalBase && !normalizeCompare(originalBase).includes(normalizeCompare(base)) ? originalBase.slice(0, 32) : ''
     if (suffix) tags.push(suffix)
   }
+  if (duplicateIndex > 0) tags.push(`duplicate ${duplicateIndex + 1}`)
   return `${base}${tags.length ? ` [${tags.join(' ')}]` : ''}${parsed.ext}`
 }
 
@@ -627,7 +641,7 @@ function getVersionScore(parsed) {
 const MAX_ORGANIZATION_PREVIEW_ITEMS = 500
 
 function addOrganizationPreviewItem(report, item) {
-  if (item.action !== 'move' && item.action !== 'cleanup' && item.action !== 'moved' && item.action !== 'cleaned' && item.action !== 'error' && item.action !== 'missing') {
+  if (item.action !== 'move' && item.action !== 'cleanup' && item.action !== 'warning' && item.action !== 'moved' && item.action !== 'cleaned' && item.action !== 'error' && item.action !== 'missing') {
     return
   }
 
@@ -641,21 +655,22 @@ function addOrganizationPreviewItem(report, item) {
 
 async function buildSeriesOrganizationPlan(rootPath) {
   const startedAt = Date.now()
-  const maxPlanMs = 10000
+  const maxPlanMs = 45000
   const cleanRootPath = cleanText(rootPath)
+  organizerDebug({ phase: 'plan:requested', rootPath: cleanRootPath })
   if (!cleanRootPath) {
     return { ok: false, error: 'Selecciona una carpeta de series.', moved: 0, skipped: 0, unrecognized: 0, duplicates: 0, items: [] }
   }
 
   const root = path.resolve(cleanRootPath)
-  const rootStats = await withFsTimeout(fs.promises.lstat(root).catch(() => null), 1000, null)
+  const rootStats = await withFsTimeout(fs.promises.lstat(root).catch(() => null), 5000, null)
   if (!rootStats?.isDirectory()) {
     return { ok: false, error: 'La carpeta de series no existe.', moved: 0, skipped: 0, unrecognized: 0, duplicates: 0, items: [] }
   }
 
   const files = []
   organizerDebug('scan:start', root)
-  const scanInfo = await walkAllFilesAsync(root, files, { maxMs: 7000, maxFiles: 12000 })
+  const scanInfo = await walkAllFilesAsync(root, files, { maxMs: 35000, maxFiles: 12000, statTimeoutMs: 1500 })
   organizerDebug('scan:done', { files: files.length, scanInfo, ms: Date.now() - startedAt })
   organizerDebug('context:start')
   const context = createOrganizationContext(root)
@@ -674,6 +689,7 @@ async function buildSeriesOrganizationPlan(rootPath) {
     skipped: 0,
     unrecognized: 0,
     duplicates: 0,
+    warnings: 0,
     omittedItems: 0,
     items: []
   }
@@ -688,7 +704,29 @@ async function buildSeriesOrganizationPlan(rootPath) {
     if (index > 0 && index % 250 === 0) await delayTick()
 
     if (isPartialDownloadFile(file.path)) {
+      organizerDebug({ phase: 'parse:skip-partial', path: file.path })
       report.skipped += 1
+      continue
+    }
+
+    const ext = path.extname(file.path).toLowerCase()
+    if (ext === '.txt' || ext === '.url') {
+      report.cleaned += 1
+      organizerDebug({ phase: 'parse:cleanup-text-url', path: file.path, size: file.size })
+      addOrganizationPreviewItem(report, { action: 'cleanup', from: path.resolve(file.path), kind: 'text-url', size: file.size })
+      continue
+    }
+
+    if (ARCHIVE_EXTENSIONS.has(ext)) {
+      report.warnings += 1
+      organizerDebug({ phase: 'parse:archive-warning', path: file.path, size: file.size, ext })
+      addOrganizationPreviewItem(report, {
+        action: 'warning',
+        from: path.resolve(file.path),
+        kind: 'archive',
+        size: file.size,
+        warning: 'Archivo comprimido detectado. No se mueve ni se elimina automaticamente.'
+      })
       continue
     }
 
@@ -696,17 +734,31 @@ async function buildSeriesOrganizationPlan(rootPath) {
     if (!parsed) {
       if (isDisposableFile(file.path)) {
         if (path.extname(file.path).toLowerCase() === '.torrent') {
+          organizerDebug({ phase: 'parse:skip-torrent-without-video', path: file.path })
           report.skipped += 1
           continue
         }
         report.cleaned += 1
+        organizerDebug({ phase: 'parse:cleanup-junk', path: file.path, size: file.size })
         addOrganizationPreviewItem(report, { action: 'cleanup', from: file.path, kind: 'junk', size: file.size })
       } else {
         report.unrecognized += 1
+        organizerDebug({ phase: 'parse:unrecognized', path: file.path, size: file.size })
       }
       continue
     }
 
+    organizerDebug({
+      phase: 'parse:recognized',
+      path: file.path,
+      title: parsed.title,
+      season: parsed.season,
+      episode: parsed.episode,
+      quality: parsed.quality,
+      language: parsed.language,
+      codec: parsed.codec,
+      isVideo: parsed.isVideo
+    })
     parsedItems.push(parsed)
   }
   organizerDebug('parse:done', { parsed: parsedItems.length, report: { cleaned: report.cleaned, skipped: report.skipped, unrecognized: report.unrecognized }, ms: Date.now() - startedAt })
@@ -721,6 +773,7 @@ async function buildSeriesOrganizationPlan(rootPath) {
     }
     if (index > 0 && index % 250 === 0) await delayTick()
     if (parsed.isVideo && (Number(parsed.file.size || 0) <= 0 || isPartialDownloadFile(parsed.file.path))) {
+      organizerDebug({ phase: 'ready:skip-not-complete', path: parsed.file.path, size: parsed.file.size })
       report.skipped += 1
       continue
     }
@@ -764,6 +817,19 @@ async function buildSeriesOrganizationPlan(rootPath) {
       continue
     }
 
+    if (!parsed.isVideo && !SUBTITLE_EXTENSIONS.has(parsed.ext)) {
+      report.unrecognized += 1
+      organizerDebug({
+        phase: 'plan:skip-non-media-auxiliary',
+        path: parsed.file.path,
+        title: parsed.title,
+        season: parsed.season,
+        episode: parsed.episode,
+        ext: parsed.ext
+      })
+      continue
+    }
+
     const duplicateIndex = duplicateIndexes.get(parsed.file.path.toLowerCase()) || 0
     const seasonDirectory = path.join(root, safeName(parsed.title), `Temporada ${parsed.season}`)
     let targetPath = path.join(seasonDirectory, buildOrganizationTargetName(parsed, duplicateIndex))
@@ -773,6 +839,11 @@ async function buildSeriesOrganizationPlan(rootPath) {
       reservedTargets.has(targetPath.toLowerCase())
     ) {
       collisionIndex += 1
+      if (collisionIndex > duplicateIndex + 999) {
+        organizerDebug({ phase: 'plan:collision-limit', from: parsed.file.path, targetPath })
+        targetPath = path.join(seasonDirectory, `${path.basename(targetPath, parsed.ext)} [${Date.now()}]${parsed.ext}`)
+        break
+      }
       targetPath = path.join(seasonDirectory, buildOrganizationTargetName(parsed, collisionIndex))
     }
 
@@ -781,6 +852,16 @@ async function buildSeriesOrganizationPlan(rootPath) {
     const action = path.resolve(parsed.file.path).toLowerCase() === path.resolve(targetPath).toLowerCase() ? 'skipped' : 'move'
     if (action === 'move') report.moved += 1
     if (action === 'skipped') report.skipped += 1
+    organizerDebug({
+      phase: `plan:${action}`,
+      from: parsed.file.path,
+      to: targetPath,
+      title: parsed.title,
+      season: parsed.season,
+      episode: parsed.episode,
+      duplicateIndex,
+      duplicateRole: duplicateIndexes.has(parsed.file.path.toLowerCase()) ? (duplicateIndex === 0 ? 'best' : 'duplicate') : ''
+    })
 
     addOrganizationPreviewItem(report, {
       action,
@@ -858,6 +939,37 @@ async function disposeFile(filePath) {
   return true
 }
 
+async function moveFileSafe(sourcePath, targetPath) {
+  const finalTargetPath = getUniqueTargetPath(targetPath)
+  organizerDebug({ phase: 'move:start', from: sourcePath, to: finalTargetPath })
+
+  try {
+    await fs.promises.rename(sourcePath, finalTargetPath)
+    organizerDebug({ phase: 'move:rename-ok', from: sourcePath, to: finalTargetPath })
+    return finalTargetPath
+  } catch (error) {
+    organizerDebug({ phase: 'move:rename-failed', from: sourcePath, to: finalTargetPath, code: error.code, message: error.message })
+    if (error.code !== 'EXDEV') throw error
+  }
+
+  organizerDebug({ phase: 'move:copy-between-devices', from: sourcePath, to: finalTargetPath })
+  await fs.promises.copyFile(sourcePath, finalTargetPath, fs.constants.COPYFILE_EXCL)
+
+  const [sourceStats, targetStats] = await Promise.all([
+    fs.promises.stat(sourcePath),
+    fs.promises.stat(finalTargetPath)
+  ])
+  if (sourceStats.size !== targetStats.size) {
+    await fs.promises.rm(finalTargetPath, { force: true }).catch(() => {})
+    organizerDebug({ phase: 'move:copy-size-mismatch', from: sourcePath, to: finalTargetPath, sourceSize: sourceStats.size, targetSize: targetStats.size })
+    throw new Error('La copia entre unidades no coincide en tamano; se ha cancelado el movimiento.')
+  }
+
+  await fs.promises.rm(sourcePath, { force: true })
+  organizerDebug({ phase: 'move:copy-ok-source-removed', from: sourcePath, to: finalTargetPath, size: targetStats.size })
+  return finalTargetPath
+}
+
 async function organizeSeriesFolder(rootPath) {
   const report = await buildSeriesOrganizationPlan(rootPath)
   if (!report.ok) return report
@@ -866,17 +978,20 @@ async function organizeSeriesFolder(rootPath) {
   for (const item of report.items.filter((entry) => entry.action === 'move')) {
     try {
       if (!pathExists(item.from)) {
+        organizerDebug({ phase: 'apply:missing', path: item.from })
         item.action = 'missing'
         item.error = 'El archivo ya no existe.'
         continue
       }
       fs.mkdirSync(path.dirname(item.to), { recursive: true })
-      fs.renameSync(item.from, item.to)
+      item.to = await moveFileSafe(item.from, item.to)
       removeEmptyDirectories(path.dirname(item.from), report.root)
       item.action = 'moved'
+      organizerDebug({ phase: 'apply:moved', from: item.from, to: item.to })
     } catch (error) {
       item.action = 'error'
       item.error = error.message
+      organizerDebug({ phase: 'apply:move-error', from: item.from, to: item.to, message: error.message, code: error.code })
     }
   }
 
@@ -890,9 +1005,11 @@ async function organizeSeriesFolder(rootPath) {
       await disposeFile(item.from)
       removeEmptyDirectories(path.dirname(item.from), report.root)
       item.action = 'cleaned'
+      organizerDebug({ phase: 'apply:cleaned', path: item.from })
     } catch (error) {
       item.action = 'error'
       item.error = error.message
+      organizerDebug({ phase: 'apply:cleanup-error', path: item.from, message: error.message, code: error.code })
     }
   }
 

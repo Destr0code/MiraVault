@@ -14,7 +14,7 @@ export default function Folders() {
   const [sources, setSources] = useState([])
   const [busy, setBusy] = useState(false)
   const [busyLabel, setBusyLabel] = useState('')
-  const [seriesRoot, setSeriesRoot] = useState('C:\\Users\\mache\\Downloads\\series')
+  const [seriesRoot, setSeriesRoot] = useState('')
   const [organizePreview, setOrganizePreview] = useState(null)
   const { show } = useToast()
 
@@ -25,15 +25,7 @@ export default function Folders() {
 
   async function loadSeriesRoot() {
     const config = await window.electronAPI?.qbittorrentGetConfig?.()
-    const defaultRoot = 'C:\\Users\\mache\\Downloads\\series'
-    if (config?.seriesDownloadPath && !/^G:\\/i.test(config.seriesDownloadPath)) {
-      setSeriesRoot(config.seriesDownloadPath)
-      return
-    }
-    setSeriesRoot(defaultRoot)
-    if (config?.seriesDownloadPath !== defaultRoot) {
-      await window.electronAPI?.qbittorrentSetConfig?.({ ...(config || {}), seriesDownloadPath: defaultRoot })
-    }
+    setSeriesRoot(config?.seriesDownloadPath || '')
   }
 
   useEffect(() => {
@@ -95,21 +87,27 @@ export default function Folders() {
   }
 
   async function handlePreviewSeries() {
+    if (!seriesRoot.trim()) {
+      show('Elige primero la carpeta que quieres ordenar', 'error')
+      return
+    }
+
     setBusyLabel('Analizando carpeta...')
     try {
       await runAction(async () => {
         await new Promise((resolve) => window.requestAnimationFrame(resolve))
         const result = await withTimeout(
           window.electronAPI?.libraryPreviewOrganizeSeriesFolder?.(seriesRoot),
-          20000,
-          'El analisis esta tardando demasiado. Revisa que la ruta apunte solo a la carpeta de series.'
+          70000,
+          'El analisis esta tardando demasiado. Si es una unidad externa, revisa que este activa y prueba con una subcarpeta mas concreta.'
         )
         if (!result?.ok) {
           show(result?.error || 'No se pudo analizar la carpeta de series', 'error')
           return
         }
         setOrganizePreview(result)
-        show(`Analisis listo: ${result.moved} por mover, ${result.cleaned || 0} a limpiar, ${result.unrecognized} sin detectar`, 'info')
+        const warningText = result.warnings ? `, ${result.warnings} avisos` : ''
+        show(`Analisis listo: ${result.moved} por mover, ${result.cleaned || 0} a limpiar${warningText}, ${result.unrecognized} sin detectar`, 'info')
       })
     } catch (error) {
       show(error.message || 'No se pudo analizar la carpeta de series', 'error')
@@ -117,6 +115,10 @@ export default function Folders() {
   }
 
   async function handleOrganizeSeries() {
+    if (!seriesRoot.trim()) {
+      show('Elige primero la carpeta que quieres ordenar', 'error')
+      return
+    }
     if (!organizePreview && !window.confirm('No has hecho vista previa. Quieres ordenar igualmente?')) return
 
     setBusyLabel('Ordenando carpeta...')
@@ -125,15 +127,16 @@ export default function Folders() {
         await new Promise((resolve) => window.requestAnimationFrame(resolve))
         const result = await withTimeout(
           window.electronAPI?.libraryOrganizeSeriesFolder?.(seriesRoot),
-          30000,
-          'La ordenacion esta tardando demasiado. MiraVault ha detenido la espera para que la app no se quede bloqueada.'
+          180000,
+          'La ordenacion esta tardando demasiado. Si la carpeta esta en una unidad externa, espera a que termine de responder y prueba de nuevo.'
         )
         if (!result?.ok) {
           show(result?.error || 'No se pudo ordenar la carpeta de series', 'error')
           return
         }
         setOrganizePreview(result)
-        show(`Series ordenadas: ${result.moved} movidos, ${result.cleaned || 0} limpiados, ${result.unrecognized} sin detectar`, 'success')
+        const warningText = result.warnings ? `, ${result.warnings} avisos` : ''
+        show(`Series ordenadas: ${result.moved} movidos, ${result.cleaned || 0} limpiados${warningText}, ${result.unrecognized} sin detectar`, 'success')
         window.electronAPI?.libraryRescan?.().then(loadSources).catch(() => {})
       })
     } catch (error) {
@@ -195,7 +198,7 @@ export default function Folders() {
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-semibold text-[color:var(--text-primary)]">Organizar series</h2>
             <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-              Mete archivos sueltos dentro de esta carpeta y pulsa ordenar. MiraVault los recoloca por serie, temporada y episodio.
+              Elige manualmente la carpeta que quieres ordenar. MiraVault no usa una ruta por defecto para evitar mover archivos donde no toca.
             </p>
             <input
               value={seriesRoot}
@@ -203,6 +206,7 @@ export default function Folders() {
                 setSeriesRoot(event.target.value)
                 setOrganizePreview(null)
               }}
+              placeholder="Selecciona una carpeta de series para ordenar"
               className="mt-4 w-full rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]"
             />
           </div>
@@ -218,7 +222,7 @@ export default function Folders() {
             <button
               type="button"
               onClick={handlePreviewSeries}
-              disabled={busy}
+              disabled={busy || !seriesRoot.trim()}
               className="rounded-xl border border-[color:var(--accent)] px-5 py-3 text-sm text-[color:var(--accent)] transition hover:bg-[color:var(--accent-muted)] disabled:opacity-60"
             >
               {busy ? 'Analizando...' : 'Vista previa'}
@@ -226,7 +230,7 @@ export default function Folders() {
             <button
               type="button"
               onClick={handleOrganizeSeries}
-              disabled={busy}
+              disabled={busy || !seriesRoot.trim()}
               className="rounded-xl bg-[color:var(--accent)] px-5 py-3 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-60"
             >
               {busy ? 'Ordenando...' : 'Ordenar ahora'}
@@ -242,13 +246,14 @@ export default function Folders() {
 
         {organizePreview ? (
           <div className="mt-5 space-y-4 rounded-[22px] border border-[color:var(--border)] bg-black/10 p-4">
-            <div className="grid gap-3 md:grid-cols-6">
+            <div className="grid gap-3 md:grid-cols-7">
               {[
                 ['Escaneados', organizePreview.scanned],
                 [organizePreview.applied ? 'Movidos' : 'Por mover', organizePreview.moved],
                 [organizePreview.applied ? 'Limpiados' : 'A limpiar', organizePreview.cleaned],
                 ['Ya correctos', organizePreview.skipped],
                 ['Duplicados', organizePreview.duplicates],
+                ['Avisos', organizePreview.warnings],
                 ['Sin detectar', organizePreview.unrecognized]
               ].map(([label, value]) => (
                 <div key={label} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)]/60 p-3">
@@ -269,11 +274,12 @@ export default function Folders() {
                       'rounded-full px-2 py-1',
                       item.action === 'move' || item.action === 'moved' ? 'bg-[color:var(--accent-muted)] text-[color:var(--accent)]' : '',
                       item.action === 'cleanup' || item.action === 'cleaned' ? 'bg-[#f3cf63]/15 text-[#f3cf63]' : '',
+                      item.action === 'warning' ? 'bg-[#f3cf63]/15 text-[#f3cf63]' : '',
                       item.action === 'skipped' ? 'bg-[#4caf6e]/15 text-[#84d49c]' : '',
                       item.action === 'incomplete' || item.action === 'missing' ? 'bg-[#f3cf63]/15 text-[#f3cf63]' : '',
                       item.action === 'unrecognized' || item.action === 'error' ? 'bg-[#e05555]/15 text-[#e05555]' : ''
                     ].join(' ')}>
-                      {item.action === 'move' ? 'Mover' : item.action === 'moved' ? 'Movido' : item.action === 'cleanup' ? 'Eliminar' : item.action === 'cleaned' ? 'Limpiado' : item.action === 'incomplete' ? 'Incompleto' : item.action === 'missing' ? 'Ya no existe' : item.action === 'skipped' ? 'OK' : item.action === 'unrecognized' ? 'Sin detectar' : item.action}
+                      {item.action === 'move' ? 'Mover' : item.action === 'moved' ? 'Movido' : item.action === 'cleanup' ? 'Eliminar' : item.action === 'cleaned' ? 'Limpiado' : item.action === 'warning' ? 'Aviso' : item.action === 'incomplete' ? 'Incompleto' : item.action === 'missing' ? 'Ya no existe' : item.action === 'skipped' ? 'OK' : item.action === 'unrecognized' ? 'Sin detectar' : item.action}
                     </span>
                     {item.duplicateRole ? (
                       <span className={['rounded-full px-2 py-1', item.duplicateRole === 'best' ? 'bg-[#4caf6e]/15 text-[#84d49c]' : 'bg-[#f3cf63]/15 text-[#f3cf63]'].join(' ')}>
@@ -290,6 +296,7 @@ export default function Folders() {
                     <p className="mt-1 truncate text-xs text-[color:var(--text-muted)]">→ {item.to}</p>
                   ) : null}
                   {item.error ? <p className="mt-1 text-xs text-[#e05555]">{item.error}</p> : null}
+                  {item.warning ? <p className="mt-1 text-xs text-[#f3cf63]">{item.warning}</p> : null}
                 </div>
               ))}
             </div>
@@ -313,6 +320,7 @@ export default function Folders() {
                 No hay cambios pendientes. Todo lo util ya esta ordenado.
               </p>
             ) : null}
+
           </div>
         ) : null}
       </section>

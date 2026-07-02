@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
@@ -326,6 +327,21 @@ function EpisodeModal({ detail, season, episode, progressKey, progress, nextEpis
     }
   }, [filePath, title, progressKey, detail.imdbId, season.number, episode.number])
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') onClose()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
   async function handlePlay() {
     await onPlay({
       filePath,
@@ -375,9 +391,12 @@ function EpisodeModal({ detail, season, episode, progressKey, progress, nextEpis
     await onDeleted?.()
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-[28px] border border-white/10 bg-[color:var(--bg-secondary)] shadow-[0_30px_120px_rgba(0,0,0,0.65)]">
+  const modal = (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={onClose}>
+      <div
+        className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-[28px] border border-white/10 bg-[color:var(--bg-secondary)] shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-4 border-b border-[color:var(--border)] p-5">
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-[0.26em] text-[color:var(--accent)]">Temporada {season.number} · Episodio {episode.number}</p>
@@ -518,6 +537,9 @@ function EpisodeModal({ detail, season, episode, progressKey, progress, nextEpis
       </div>
     </div>
   )
+
+  if (typeof document === 'undefined') return modal
+  return createPortal(modal, document.body)
 }
 
 function FileActions({ filePath, onPlay, progressKey, title, playbackMeta }) {

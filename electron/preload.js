@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectTorrentFiles: () => ipcRenderer.invoke('dialog:selectTorrentFiles'),
   openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
   openPath: (p) => ipcRenderer.invoke('shell:openPath', p),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   trashPath: (p) => ipcRenderer.invoke('media:trashPath', p),
   iptvFetchPlaylist: (url) => ipcRenderer.invoke('iptv:fetchPlaylist', url),
   iptvStartBridge: (url) => ipcRenderer.invoke('iptv:startBridge', url),
@@ -21,6 +22,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Config
   getTheme: () => ipcRenderer.invoke('config:getTheme'),
   setTheme: (v) => ipcRenderer.invoke('config:setTheme', v),
+  appGetVersionNotice: () => ipcRenderer.invoke('app:getVersionNotice'),
+  appMarkVersionNoticeSeen: (version) => ipcRenderer.invoke('app:markVersionNoticeSeen', version),
+  appCheckForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+  appDismissUpdateVersion: (version) => ipcRenderer.invoke('app:dismissUpdateVersion', version),
+  appGetSupportInfo: () => ipcRenderer.invoke('app:getSupportInfo'),
+  appCopySupportInfo: () => ipcRenderer.invoke('app:copySupportInfo'),
 
   // Biblioteca local
   libraryList: () => ipcRenderer.invoke('library:list'),

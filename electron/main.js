@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { execFile, spawn } = require('child_process')
@@ -38,6 +38,12 @@ const torrentEngine = require('./torrentEngine')
 const iptvBridge = require('./iptvBridge')
 const { listSubtitles, resolveSubtitle } = require('./subtitles')
 const { getEpisodeMetadata } = require('./episodeMetadata')
+const {
+  checkForUpdates,
+  dismissUpdateVersion,
+  getVersionNotice,
+  markVersionNoticeSeen
+} = require('./releaseInfo')
 
 const isDev = !app.isPackaged
 
@@ -132,7 +138,9 @@ function runOrganizerWorker(action, rootPath, timeoutMs) {
     }, timeoutMs)
 
     child.stdout.on('data', (chunk) => { stdout += chunk.toString() })
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString()
+    })
     child.on('error', (error) => {
       if (settled) return
       settled = true
@@ -154,6 +162,46 @@ function runOrganizerWorker(action, rootPath, timeoutMs) {
       }
     })
   })
+}
+
+async function collectSupportInfo() {
+  const store = await getStore()
+  const [stats, sources] = await Promise.all([
+    getLibraryStats().catch(() => null),
+    getLibrarySources().catch(() => [])
+  ])
+
+  return {
+    app: {
+      name: app.getName(),
+      version: app.getVersion(),
+      packaged: app.isPackaged
+    },
+    runtime: {
+      platform: process.platform,
+      arch: process.arch,
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node
+    },
+    paths: {
+      appPath: app.getAppPath(),
+      userData: app.getPath('userData'),
+      logs: app.getPath('logs')
+    },
+    player: {
+      playerPath: store.get('playerPath', ''),
+      playerName: store.get('playerName', '')
+    },
+    library: {
+      stats,
+      sources: Array.isArray(sources) ? sources.map((source) => source.path || source.sourcePath || source) : []
+    },
+    preferences: {
+      theme: store.get('theme', DEFAULTS.theme)
+    },
+    generatedAt: new Date().toISOString()
+  }
 }
 
 app.whenReady().then(async () => {
@@ -201,6 +249,7 @@ ipcMain.handle('dialog:selectTorrentFiles', async () => {
 
 ipcMain.handle('shell:openFolder', (_, targetPath) => shell.openPath(targetPath))
 ipcMain.handle('shell:openPath', (_, targetPath) => shell.openPath(targetPath))
+ipcMain.handle('shell:openExternal', (_, targetUrl) => shell.openExternal(String(targetUrl || '')))
 ipcMain.handle('media:trashPath', async (_, targetPath) => {
   const resolvedPath = path.resolve(String(targetPath || ''))
   if (!resolvedPath || !fs.existsSync(resolvedPath)) return { ok: false, error: 'La ruta no existe.' }
@@ -211,6 +260,17 @@ ipcMain.handle('media:trashPath', async (_, targetPath) => {
   } catch (error) {
     return { ok: false, error: error.message || 'No se pudo mover a la papelera.' }
   }
+})
+
+ipcMain.handle('app:getVersionNotice', () => getVersionNotice())
+ipcMain.handle('app:markVersionNoticeSeen', (_, version) => markVersionNoticeSeen(version))
+ipcMain.handle('app:checkForUpdates', () => checkForUpdates())
+ipcMain.handle('app:dismissUpdateVersion', (_, version) => dismissUpdateVersion(version))
+ipcMain.handle('app:getSupportInfo', () => collectSupportInfo())
+ipcMain.handle('app:copySupportInfo', async () => {
+  const info = await collectSupportInfo()
+  clipboard.writeText(JSON.stringify(info, null, 2))
+  return { ok: true, info }
 })
 
 ipcMain.handle('iptv:fetchPlaylist', async (_, url) => {
@@ -253,39 +313,16 @@ ipcMain.handle('library:updateMetadataOverride', async (_, payload = {}) => upda
 ipcMain.handle('library:clearMetadataOverride', async (_, id) => clearMetadataOverride(id))
 ipcMain.handle('library:searchMetadataOptions', async (_, id) => searchLibraryMetadataOptions(id))
 ipcMain.handle('library:previewOrganizeSeriesFolder', async (_, rootPath) => {
-  const startedAt = Date.now()
-  console.log('[organizer] preview:start', rootPath)
   try {
-    const result = await runOrganizerWorker('preview', rootPath, 20000)
-    console.log('[organizer] preview:done', {
-      ms: Date.now() - startedAt,
-      ok: result?.ok,
-      scanned: result?.scanned,
-      moved: result?.moved,
-      cleaned: result?.cleaned,
-      items: result?.items?.length,
-      truncated: result?.truncated
-    })
-    return result
+    return await runOrganizerWorker('preview', rootPath, 70000)
   } catch (error) {
     console.error('[organizer] preview:error', error)
     return { ok: false, error: error.message || 'No se pudo analizar la carpeta.', items: [] }
   }
 })
 ipcMain.handle('library:organizeSeriesFolder', async (_, rootPath) => {
-  const startedAt = Date.now()
-  console.log('[organizer] organize:start', rootPath)
   try {
-    const result = await runOrganizerWorker('organize', rootPath, 90000)
-    console.log('[organizer] organize:done', {
-      ms: Date.now() - startedAt,
-      ok: result?.ok,
-      moved: result?.moved,
-      cleaned: result?.cleaned,
-      items: result?.items?.length,
-      truncated: result?.truncated
-    })
-    return result
+    return await runOrganizerWorker('organize', rootPath, 180000)
   } catch (error) {
     console.error('[organizer] organize:error', error)
     return { ok: false, error: error.message || 'No se pudo ordenar la carpeta.', items: [] }

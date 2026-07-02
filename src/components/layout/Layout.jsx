@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import TitleBar from './TitleBar'
 import Toast from '@/components/ui/Toast'
+import StartupNotice from '@/components/ui/StartupNotice'
 
 export default function Layout() {
   const location = useLocation()
@@ -28,6 +29,7 @@ export default function Layout() {
       </div>
 
       <Toast />
+      <StartupNotice />
     </div>
   )
 }

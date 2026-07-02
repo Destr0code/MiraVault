@@ -2,6 +2,32 @@
 
 Todas las notas importantes de MiraVault se documentan aqui por version.
 
+## [0.4.3] - 2026-07-02
+
+### Added
+
+- Aviso del instalador cuando detecta una version de MiraVault ya instalada.
+- Comprobacion de nuevas releases de GitHub al abrir la app.
+- Popup de primer arranque por version con las novedades principales del changelog.
+- Boton directo para descargar el nuevo instalador cuando haya una version mas reciente.
+- Boton para ignorar una release concreta si no quieres volver a ver el aviso.
+- Primer onboarding con accesos rapidos para biblioteca, reproductor e IPTV.
+- Seccion de soporte en Ajustes para copiar informacion tecnica al portapapeles.
+
+### Changed
+
+- El `CHANGELOG.md` se empaqueta con la app para alimentar los avisos de version instalada.
+- El instalador queda configurado para ejecutar MiraVault al terminar.
+- La pantalla Acerca de lee la version real de la app en vez de tenerla fija en el codigo.
+
+### Fixed
+
+- La carpeta para ordenar series ya no se fuerza a una ruta por defecto: debe elegirla el usuario.
+- El organizador ya no descarta rutas en unidades externas como `G:\`.
+- Los movimientos entre unidades distintas usan copia verificada y borrado del origen cuando Windows no permite `rename`.
+- El analisis de carpetas externas tiene timeouts mas amplios para discos USB/NAS lentos.
+- El organizador elimina `.txt` y `.url`, no mueve `.rar` y muestra aviso si detecta comprimidos.
+
 ## [0.4.2] - 2026-07-02
 
 ### Added

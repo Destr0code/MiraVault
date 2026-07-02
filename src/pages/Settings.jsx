@@ -39,15 +39,17 @@ export default function Settings() {
   const { theme, setTheme } = useThemeStore()
   const [playerConfig, setPlayerConfig] = useState({ playerPath: '', playerName: '' })
   const [libraryStats, setLibraryStats] = useState({ total: 0, episodes: 0, totalSize: 0 })
+  const [supportInfo, setSupportInfo] = useState(null)
   const { show } = useToast()
 
   useEffect(() => {
     let mounted = true
 
     const loadConfigs = async () => {
-      const [player, stats] = await Promise.all([
+      const [player, stats, support] = await Promise.all([
         window.electronAPI?.playerGetConfig?.(),
-        window.electronAPI?.libraryGetStats?.()
+        window.electronAPI?.libraryGetStats?.(),
+        window.electronAPI?.appGetSupportInfo?.()
       ])
 
       if (mounted) {
@@ -55,6 +57,7 @@ export default function Settings() {
         const playerFileName = String(loadedPlayer.playerPath || '').split('\\').pop()?.toLowerCase() || ''
         setPlayerConfig(playerFileName && playerFileName !== 'vlc.exe' ? { playerPath: '', playerName: '' } : loadedPlayer)
         setLibraryStats(stats || { total: 0, episodes: 0, totalSize: 0 })
+        setSupportInfo(support || null)
       }
     }
 
@@ -90,6 +93,16 @@ export default function Settings() {
     setPlayerConfig(cfg)
     await window.electronAPI?.playerSaveConfig?.(cfg)
     show('Se usara la app por defecto del sistema', 'info')
+  }
+
+  async function handleCopySupportInfo() {
+    const result = await window.electronAPI?.appCopySupportInfo?.()
+    if (result?.ok) {
+      setSupportInfo(result.info)
+      show('Informacion de soporte copiada', 'success')
+    } else {
+      show('No se pudo copiar la informacion de soporte', 'error')
+    }
   }
 
   return (
@@ -200,13 +213,49 @@ export default function Settings() {
       </section>
 
       <section className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--bg-card)]/45 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-semibold text-[color:var(--text-primary)]">Soporte</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--text-secondary)]">
+              Si algo falla, copia esta informacion y pegala en GitHub o en una conversacion de soporte. No incluye archivos multimedia ni contenido privado, solo configuracion tecnica basica.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCopySupportInfo}
+            className="rounded-xl border border-[color:var(--border)] px-5 py-3 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-hover)]"
+          >
+            Copiar info para soporte
+          </button>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <div className="rounded-[20px] border border-[color:var(--border)] bg-black/10 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Version</p>
+            <p className="mt-3 text-lg font-medium text-[color:var(--text-primary)]">{supportInfo?.app?.version || '0.4.3'}</p>
+          </div>
+          <div className="rounded-[20px] border border-[color:var(--border)] bg-black/10 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Sistema</p>
+            <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
+              {supportInfo?.runtime ? `${supportInfo.runtime.platform} ${supportInfo.runtime.arch}` : 'Windows'}
+            </p>
+          </div>
+          <div className="rounded-[20px] border border-[color:var(--border)] bg-black/10 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Modo</p>
+            <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
+              {supportInfo?.app?.packaged ? 'Instalada' : 'Desarrollo'}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--bg-card)]/45 p-5">
         <h2 className="text-2xl font-semibold text-[color:var(--text-primary)]">Acerca de</h2>
         <div className="mt-4 flex items-center gap-4 rounded-[22px] border border-[color:var(--border)] bg-black/10 p-5">
           <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[20px] bg-[color:var(--accent-muted)]">
             <BrandMark className="h-12 w-12 object-contain text-[color:var(--accent)]" />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-[color:var(--text-primary)]">MiraVault v0.4.2</p>
+            <p className="text-2xl font-semibold text-[color:var(--text-primary)]">MiraVault v{supportInfo?.app?.version || '0.4.3'}</p>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[color:var(--text-secondary)]">
               Organizador de biblioteca local para peliculas, series y libros con deteccion automatica de temporadas,
               episodios, calidad, idioma, caratulas, metadatos y progreso de visionado.

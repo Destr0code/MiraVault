@@ -147,7 +147,7 @@ export default function Downloads() {
     url: 'http://localhost:8080',
     username: 'admin',
     password: 'admin123',
-    seriesDownloadPath: 'C:\\Users\\mache\\Downloads\\series'
+    seriesDownloadPath: ''
   })
   const [webConfig, setWebConfig] = useState({ downloadPath: '' })
   const [engine, setEngine] = useState({ engine: 'webtorrent', ok: false })
@@ -427,7 +427,7 @@ export default function Downloads() {
           <button type="button" onClick={selectSeriesFolder} className="rounded-xl border border-[color:var(--border)] px-4 py-3 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)]">Carpeta series</button>
         </div>
         <p className="mt-2 text-xs text-[color:var(--text-muted)]">
-          Si el torrent parece un episodio, MiraVault intentara meterlo en una serie existente dentro de esta carpeta.
+          Opcional: si eliges una carpeta, los torrents que parezcan episodios podran caer ahi cuando no se encuentre una serie existente.
         </p>
       </section>
 

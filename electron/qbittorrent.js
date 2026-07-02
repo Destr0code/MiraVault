@@ -5,7 +5,7 @@ const { app } = require('electron')
 const { getStore } = require('./storeHelper')
 const { listLibrary } = require('./library')
 
-const DEFAULT_SERIES_DOWNLOAD_PATH = path.join(process.env.USERPROFILE || process.env.HOME || process.cwd(), 'Downloads', 'series')
+const LEGACY_DEFAULT_SERIES_DOWNLOAD_PATH = path.join(process.env.USERPROFILE || process.env.HOME || process.cwd(), 'Downloads', 'series')
 
 const DEFAULT_CONFIG = {
   mode: 'external',
@@ -14,7 +14,7 @@ const DEFAULT_CONFIG = {
   managedPort: 18080,
   username: 'admin',
   password: 'admin123',
-  seriesDownloadPath: DEFAULT_SERIES_DOWNLOAD_PATH
+  seriesDownloadPath: ''
 }
 
 let session = {
@@ -281,6 +281,10 @@ async function getConfig() {
     ...(store.get('qbittorrent') || {})
   }
 
+  if (path.resolve(cleanText(config.seriesDownloadPath || '.')).toLowerCase() === path.resolve(LEGACY_DEFAULT_SERIES_DOWNLOAD_PATH).toLowerCase()) {
+    config.seriesDownloadPath = ''
+  }
+
   if (config.mode === 'managed' && !getManagedExecutable()) {
     config.mode = 'external'
   }
@@ -298,7 +302,7 @@ async function setConfig(config = {}) {
     managedPort: Number(config.managedPort || current.managedPort || DEFAULT_CONFIG.managedPort),
     username: String(config.username ?? current.username ?? ''),
     password: String(config.password ?? current.password ?? ''),
-    seriesDownloadPath: cleanText(config.seriesDownloadPath ?? current.seriesDownloadPath ?? DEFAULT_CONFIG.seriesDownloadPath)
+    seriesDownloadPath: cleanText(config.seriesDownloadPath ?? current.seriesDownloadPath ?? '')
   }
 
   if (next.mode === 'managed' && !getManagedExecutable()) {
