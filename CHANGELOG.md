@@ -16,6 +16,7 @@ Todas las notas importantes de MiraVault se documentan aqui por version.
 
 - El README documenta que MiraVault no incluye proveedores, indices, trackers ni fuentes por defecto.
 - La configuracion de proveedores se guarda localmente y no se sincroniza con ningun servicio externo.
+- Las builds de release vuelven a ser manuales temporalmente hasta preparar firma de codigo.
 
 ## [0.4.3] - 2026-07-02
 

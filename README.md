@@ -187,22 +187,26 @@ Build output is generated in:
 dist-electron/
 ```
 
-### GitHub Actions
+### Manual Releases
 
-The repository includes a Windows build workflow:
+Windows releases are built manually for now while code signing is being prepared.
 
-```text
-.github/workflows/build-windows.yml
-```
-
-It can be launched manually from GitHub Actions or automatically by pushing a tag:
+Recommended local release flow:
 
 ```powershell
-git tag v0.4.4
-git push origin v0.4.4
+npm install
+npm run build:installer
 ```
 
-Tagged builds publish installer artifacts to GitHub Releases.
+Then upload these files from `dist-electron/` to the matching GitHub Release:
+
+```text
+MiraVault-Setup-x.y.z.exe
+MiraVault-Setup-x.y.z.exe.blockmap
+latest.yml
+```
+
+Automated release builds will be revisited after code signing is ready.
 
 ## Project Structure
 
