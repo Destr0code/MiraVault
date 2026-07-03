@@ -67,6 +67,13 @@ const sortOptions = [
   { value: 'progress', label: 'Porcentaje' }
 ]
 
+const providerTypes = [
+  { value: 'rss', label: 'RSS' },
+  { value: 'torznab', label: 'Torznab' },
+  { value: 'json', label: 'JSON' },
+  { value: 'folder', label: 'Carpeta local' }
+]
+
 function getDownloadedBytes(torrent) {
   const completed = Number(torrent.completed || 0)
   if (completed > 0) return completed
@@ -140,6 +147,32 @@ function TorrentRow({ torrent, onAction }) {
   )
 }
 
+function ProviderResultRow({ item, onDownload }) {
+  return (
+    <article className="rounded-2xl border border-[color:var(--border)] bg-black/10 p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{item.title}</h3>
+            {item.quality ? <span className="rounded-full bg-[color:var(--accent-muted)] px-2 py-1 text-[10px] text-[color:var(--accent)]">{item.quality}</span> : null}
+            {item.language ? <span className="rounded-full bg-black/20 px-2 py-1 text-[10px] text-[color:var(--text-secondary)]">{item.language}</span> : null}
+          </div>
+          <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+            {item.providerName} - {item.size ? formatBytes(item.size) : 'Tamano desconocido'} - Seeders {item.seeders || 0}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onDownload(item)}
+          className="rounded-xl bg-[color:var(--accent)] px-4 py-2 text-xs font-medium text-white"
+        >
+          Descargar
+        </button>
+      </div>
+    </article>
+  )
+}
+
 export default function Downloads() {
   const { show } = useToast()
   const [activeEngine, setActiveEngine] = useState('webtorrent')
@@ -160,6 +193,11 @@ export default function Downloads() {
   const [adding, setAdding] = useState(false)
   const [sortBy, setSortBy] = useState('progress')
   const [sortDirection, setSortDirection] = useState('desc')
+  const [providers, setProviders] = useState([])
+  const [providerDraft, setProviderDraft] = useState({ name: '', type: 'rss', url: '', apiKey: '', enabled: true })
+  const [providerQuery, setProviderQuery] = useState('')
+  const [providerResults, setProviderResults] = useState([])
+  const [providerSearching, setProviderSearching] = useState(false)
 
   const stats = useMemo(() => {
     const active = torrents.filter((torrent) => !isComplete(torrent) && !isPaused(torrent.state)).length
@@ -213,6 +251,11 @@ export default function Downloads() {
     if (engineStatus) setEngine(engineStatus)
   }
 
+  async function loadProviders() {
+    const items = await window.electronAPI?.torrentProvidersList?.()
+    setProviders(Array.isArray(items) ? items : [])
+  }
+
   async function testConnection(showToast = false) {
     setStatus((current) => ({ ...current, checking: true }))
     const result = await window.electronAPI?.torrentPing?.()
@@ -232,6 +275,7 @@ export default function Downloads() {
 
   useEffect(() => {
     loadConfig()
+    loadProviders()
     testConnection(false).then((result) => {
       if (result?.ok) loadTorrents()
     })
@@ -281,6 +325,11 @@ export default function Downloads() {
     if (selected) setSavePath(selected)
   }
 
+  async function selectProviderFolder() {
+    const selected = await window.electronAPI?.selectFolder?.()
+    if (selected) setProviderDraft((current) => ({ ...current, url: selected }))
+  }
+
   async function selectSeriesFolder() {
     const selected = await window.electronAPI?.selectFolder?.()
     if (selected) setConfig((current) => ({ ...current, seriesDownloadPath: selected }))
@@ -310,9 +359,61 @@ export default function Downloads() {
     } else if (result.savePath) {
       show('Torrent enviado a la carpeta seleccionada', 'success')
     } else {
-      show(activeEngine === 'webtorrent' ? 'Torrent añadido a WebTorrent' : 'Torrent enviado a qBittorrent', 'success')
+      show(activeEngine === 'webtorrent' ? 'Torrent anadido a WebTorrent' : 'Torrent enviado a qBittorrent', 'success')
     }
     await loadTorrents()
+  }
+
+  async function saveProvider() {
+    if (!providerDraft.name.trim()) {
+      show('Pon un nombre para la fuente', 'error')
+      return
+    }
+    if (!providerDraft.url.trim()) {
+      show('Pon una URL o carpeta para la fuente', 'error')
+      return
+    }
+    const next = await window.electronAPI?.torrentProvidersSave?.(providerDraft)
+    setProviders(Array.isArray(next) ? next : [])
+    setProviderDraft({ name: '', type: 'rss', url: '', apiKey: '', enabled: true })
+    show('Fuente guardada', 'success')
+  }
+
+  async function deleteProvider(provider) {
+    if (!window.confirm(`Eliminar la fuente "${provider.name}"?`)) return
+    const next = await window.electronAPI?.torrentProvidersDelete?.(provider.id)
+    setProviders(Array.isArray(next) ? next : [])
+    show('Fuente eliminada', 'info')
+  }
+
+  async function testProvider(provider) {
+    const result = await window.electronAPI?.torrentProvidersTest?.(provider.id)
+    show(result?.ok ? `Fuente disponible (${result.count || 0} resultados)` : result?.error || 'La fuente no responde', result?.ok ? 'success' : 'error')
+  }
+
+  async function searchProviders() {
+    setProviderSearching(true)
+    const items = await window.electronAPI?.torrentProvidersSearch?.({ query: providerQuery })
+    setProviderSearching(false)
+    setProviderResults(Array.isArray(items) ? items : [])
+    if (!Array.isArray(items) || items.length === 0) show('Sin resultados en tus fuentes', 'info')
+  }
+
+  async function downloadProviderResult(item) {
+    const source = item.magnetUrl || item.downloadUrl || item.torrentUrl
+    if (!source) {
+      show('El resultado no tiene enlace descargable', 'error')
+      return
+    }
+
+    setAdding(true)
+    const payload = source.toLowerCase().endsWith('.torrent') && !/^https?:\/\//i.test(source)
+      ? { torrentFiles: [source], savePath }
+      : { magnetOrUrl: source, savePath }
+    const result = await window.electronAPI?.torrentAdd?.(payload)
+    setAdding(false)
+    show(result?.ok ? 'Resultado enviado a descargas' : result?.error || 'No se pudo anadir el torrent', result?.ok ? 'success' : 'error')
+    if (result?.ok) await loadTorrents()
   }
 
   async function handleAction(action, torrent) {
@@ -429,6 +530,72 @@ export default function Downloads() {
         <p className="mt-2 text-xs text-[color:var(--text-muted)]">
           Opcional: si eliges una carpeta, los torrents que parezcan episodios podran caer ahi cuando no se encuentre una serie existente.
         </p>
+      </section>
+
+      <section className="rounded-[24px] border border-[#d6a84f]/35 bg-[#d6a84f]/10 p-5">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Fuentes externas del usuario</h2>
+        <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
+          MiraVault no proporciona, recomienda ni verifica fuentes de torrents. Las fuentes que anadas son tuyas y debes usarlas solo con contenido propio, libre o autorizado.
+        </p>
+      </section>
+
+      <section className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--bg-card)]/45 p-5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-[color:var(--text-primary)]">Proveedores personalizados</h2>
+            <p className="mt-1 text-sm text-[color:var(--text-secondary)]">Anade RSS, Torznab, JSON o una carpeta local. No hay fuentes preinstaladas.</p>
+          </div>
+          <button type="button" onClick={searchProviders} disabled={providerSearching || providers.length === 0} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[color:var(--accent)] px-4 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+            {providerSearching ? <Spinner size="sm" /> : null}
+            Buscar
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_150px_1.5fr_1fr_auto]">
+          <input value={providerDraft.name} onChange={(event) => setProviderDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Nombre de la fuente" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+          <select value={providerDraft.type} onChange={(event) => setProviderDraft((current) => ({ ...current, type: event.target.value }))} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]">
+            {providerTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+          </select>
+          <input value={providerDraft.url} onChange={(event) => setProviderDraft((current) => ({ ...current, url: event.target.value }))} placeholder={providerDraft.type === 'folder' ? 'Carpeta local' : 'URL. Usa {query} si la fuente acepta busqueda'} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+          <input value={providerDraft.apiKey} onChange={(event) => setProviderDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder="API key opcional" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+          <button type="button" onClick={saveProvider} className="rounded-xl bg-[color:var(--accent)] px-4 py-3 text-sm font-medium text-white">Guardar</button>
+        </div>
+        {providerDraft.type === 'folder' ? (
+          <button type="button" onClick={selectProviderFolder} className="mt-3 rounded-xl border border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)]">Seleccionar carpeta</button>
+        ) : null}
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+          <input value={providerQuery} onChange={(event) => setProviderQuery(event.target.value)} placeholder="Buscar en tus fuentes configuradas" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+          <button type="button" onClick={searchProviders} disabled={providerSearching || providers.length === 0} className="rounded-xl border border-[color:var(--border)] px-4 py-3 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)] disabled:opacity-50">Buscar fuentes</button>
+        </div>
+
+        {providers.length > 0 ? (
+          <div className="mt-4 grid gap-3">
+            {providers.map((provider) => (
+              <div key={provider.id} className="flex flex-col gap-3 rounded-2xl border border-[color:var(--border)] bg-black/10 p-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <p className="font-medium text-[color:var(--text-primary)]">{provider.name} <span className="text-xs uppercase text-[color:var(--text-muted)]">({provider.type})</span></p>
+                  <p className="mt-1 truncate text-xs text-[color:var(--text-muted)]">{provider.url}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => testProvider(provider)} className="rounded-xl border border-[color:var(--border)] px-3 py-2 text-xs text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)]">Probar</button>
+                  <button type="button" onClick={() => deleteProvider(provider)} className="rounded-xl border border-[#e05555]/35 px-3 py-2 text-xs text-[#e05555] hover:bg-[#e05555]/10">Eliminar</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-[color:var(--text-muted)]">No hay proveedores configurados. MiraVault no trae fuentes por defecto.</p>
+        )}
+
+        {providerResults.length > 0 ? (
+          <div className="mt-5 space-y-3">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Resultados</h3>
+            {providerResults.map((item) => (
+              <ProviderResultRow key={`${item.providerId}-${item.id}`} item={item} onDownload={downloadProviderResult} />
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--bg-card)]/45 p-5">

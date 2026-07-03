@@ -85,6 +85,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   torrentDelete: (payload) => ipcRenderer.invoke('torrent:delete', payload),
   torrentOpenContent: (torrent) => ipcRenderer.invoke('torrent:openContent', torrent),
   torrentImportContent: (torrent) => ipcRenderer.invoke('torrent:importContent', torrent),
+  torrentProvidersList: () => ipcRenderer.invoke('torrentProviders:list'),
+  torrentProvidersSave: (provider) => ipcRenderer.invoke('torrentProviders:save', provider),
+  torrentProvidersDelete: (providerId) => ipcRenderer.invoke('torrentProviders:delete', providerId),
+  torrentProvidersTest: (providerId) => ipcRenderer.invoke('torrentProviders:test', providerId),
+  torrentProvidersSearch: (payload) => ipcRenderer.invoke('torrentProviders:search', payload),
 
   // qBittorrent externo (compatibilidad)
   qbittorrentGetConfig: () => ipcRenderer.invoke('qbittorrent:getConfig'),

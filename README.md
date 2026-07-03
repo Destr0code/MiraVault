@@ -113,10 +113,13 @@ The long-term goal is:
 
 - Simple internal WebTorrent support.
 - Optional qBittorrent integration for advanced users.
+- User-configured external sources such as RSS, Torznab, JSON endpoints, or local folders.
 - Import completed downloads into the local library.
 - Keep incomplete downloads separated from the media library.
 
 This area is still experimental and should be treated as beta functionality.
+
+MiraVault does not ship with torrent providers or indexes. Any external source must be configured manually by the user.
 
 ## Metadata
 
